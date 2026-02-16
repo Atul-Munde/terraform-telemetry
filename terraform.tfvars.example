@@ -1,0 +1,66 @@
+# Example Terraform variables file
+# Copy this file to terraform.tfvars and adjust values for your environment
+
+# Environment Configuration
+environment = "dev"
+namespace   = "telemetry"
+
+# OpenTelemetry Collector Configuration
+otel_collector_replicas = 2
+otel_collector_version  = "0.95.0"
+
+otel_collector_resources = {
+  requests = {
+    cpu    = "200m"
+    memory = "256Mi"
+  }
+  limits = {
+    cpu    = "1000m"
+    memory = "1Gi"
+  }
+}
+
+# HPA Configuration for OTel Collector
+otel_collector_hpa_enabled          = true
+otel_collector_hpa_min_replicas     = 2
+otel_collector_hpa_max_replicas     = 10
+otel_collector_hpa_cpu_threshold    = 70
+otel_collector_hpa_memory_threshold = 80
+
+# Jaeger Configuration
+jaeger_chart_version       = "2.0.0"
+jaeger_storage_type        = "elasticsearch"
+jaeger_query_replicas      = 2
+jaeger_collector_replicas  = 2
+
+# Elasticsearch Configuration
+elasticsearch_enabled      = true
+elasticsearch_replicas     = 1
+elasticsearch_storage_size = "50Gi"
+elasticsearch_storage_class = ""  # Use default storage class
+
+elasticsearch_resources = {
+  requests = {
+    cpu    = "1000m"
+    memory = "2Gi"
+  }
+  limits = {
+    cpu    = "2000m"
+    memory = "4Gi"
+  }
+}
+
+# Data Retention
+data_retention_days = 7
+
+# Sampling Configuration
+enable_sampling      = false
+sampling_percentage  = 100
+
+# Labels and Annotations
+labels = {
+  team = "platform"
+  cost-center = "engineering"
+}
+
+annotations = {}
