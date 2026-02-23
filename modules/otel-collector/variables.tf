@@ -38,6 +38,16 @@ variable "resources" {
       memory = string
     })
   })
+  default = {
+    requests = {
+      cpu    = "200m"
+      memory = "256Mi"
+    }
+    limits = {
+      cpu    = "1000m"
+      memory = "512Mi"
+    }
+  }
 }
 
 variable "hpa_enabled" {

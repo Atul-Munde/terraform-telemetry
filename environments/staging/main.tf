@@ -32,17 +32,17 @@ provider "helm" {
   }
 }
 
-  # Import root module
+# Import root module
 module "telemetry" {
   source = "../.."
 
-  environment                         = "staging"
-  namespace                           = "telemetry"
-  create_namespace                    = true
+  environment      = "staging"
+  namespace        = "telemetry"
+  create_namespace = true
 
   # OTel Collector Configuration
-  otel_collector_replicas             = 2
-  otel_collector_version              = "0.95.0"
+  otel_collector_replicas = 2
+  otel_collector_version  = "0.95.0"
   otel_collector_resources = {
     requests = {
       cpu    = "300m"
@@ -62,16 +62,16 @@ module "telemetry" {
   otel_collector_hpa_memory_threshold = 80
 
   # Jaeger Configuration
-  jaeger_chart_version                = "2.0.0"
-  jaeger_storage_type                 = "elasticsearch"
-  jaeger_query_replicas               = 2
-  jaeger_collector_replicas           = 2
+  jaeger_chart_version      = "2.0.0"
+  jaeger_storage_type       = "elasticsearch"
+  jaeger_query_replicas     = 2
+  jaeger_collector_replicas = 2
 
   # Elasticsearch Configuration
-  elasticsearch_enabled               = true
-  elasticsearch_replicas              = 2
-  elasticsearch_storage_size          = "75Gi"
-  elasticsearch_storage_class         = "gp3"
+  elasticsearch_enabled       = true
+  elasticsearch_replicas      = 2
+  elasticsearch_storage_size  = "75Gi"
+  elasticsearch_storage_class = "gp3"
   elasticsearch_resources = {
     requests = {
       cpu    = "1000m"
@@ -83,12 +83,26 @@ module "telemetry" {
     }
   }
 
+  # kube-prometheus Configuration
+  kube_prometheus_enabled                = true
+  kube_prometheus_create_storage_classes = true
+  prometheus_resources = {
+    requests = {
+      cpu    = "2000m"
+      memory = "6Gi"
+    }
+    limits = {
+      cpu    = "4000m"
+      memory = "12Gi"
+    }
+  }
+
   # Data Retention
-  data_retention_days                 = 7
+  data_retention_days = 7
 
   # Sampling
-  enable_sampling                     = false
-  sampling_percentage                 = 100
+  enable_sampling     = false
+  sampling_percentage = 100
 
   # Node Placement
   node_selector = {

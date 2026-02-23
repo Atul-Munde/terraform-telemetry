@@ -39,17 +39,17 @@ resource "kubernetes_config_map" "otel_collector" {
       processors = merge({
         # Batch processor to reduce API calls
         batch = {
-          timeout          = "10s"
-          send_batch_size  = 1024
+          timeout             = "10s"
+          send_batch_size     = 1024
           send_batch_max_size = 2048
         }
 
         # Memory limiter to prevent OOM
         memory_limiter = {
-          check_interval        = "1s"
-          limit_mib            = 512
-          spike_limit_mib      = 128
-          limit_percentage      = 80
+          check_interval         = "1s"
+          limit_mib              = 512
+          spike_limit_mib        = 128
+          limit_percentage       = 80
           spike_limit_percentage = 20
         }
 
@@ -71,7 +71,7 @@ resource "kubernetes_config_map" "otel_collector" {
 
         # K8s attributes processor
         k8sattributes = {
-          auth_type = "serviceAccount"
+          auth_type   = "serviceAccount"
           passthrough = false
           extract = {
             metadata = [
@@ -90,31 +90,31 @@ resource "kubernetes_config_map" "otel_collector" {
             ]
           }
         }
-      },
-      # Conditionally add tail_sampling processor
-      var.enable_sampling ? {
-        tail_sampling = {
-          decision_wait               = "10s"
-          num_traces                  = 100
-          expected_new_traces_per_sec = 10
-          policies = [
-            {
-              name = "error-traces"
-              type = "status_code"
-              status_code = {
-                status_codes = ["ERROR"]
+        },
+        # Conditionally add tail_sampling processor
+        var.enable_sampling ? {
+          tail_sampling = {
+            decision_wait               = "10s"
+            num_traces                  = 100
+            expected_new_traces_per_sec = 10
+            policies = [
+              {
+                name = "error-traces"
+                type = "status_code"
+                status_code = {
+                  status_codes = ["ERROR"]
+                }
+              },
+              {
+                name = "probabilistic-policy"
+                type = "probabilistic"
+                probabilistic = {
+                  sampling_percentage = var.sampling_percentage
+                }
               }
-            },
-            {
-              name = "probabilistic-policy"
-              type = "probabilistic"
-              probabilistic = {
-                sampling_percentage = var.sampling_percentage
-              }
-            }
-          ]
-        }
-      } : {}
+            ]
+          }
+        } : {}
       )
 
       exporters = {
@@ -128,7 +128,7 @@ resource "kubernetes_config_map" "otel_collector" {
 
         # Logging exporter for debugging
         logging = {
-          loglevel = "info"
+          loglevel            = "info"
           sampling_initial    = 5
           sampling_thereafter = 200
         }
@@ -150,14 +150,14 @@ resource "kubernetes_config_map" "otel_collector" {
         extensions = ["health_check", "pprof", "zpages"]
         pipelines = {
           traces = {
-            receivers  = ["otlp"]
+            receivers = ["otlp"]
             processors = var.enable_sampling ? [
               "memory_limiter",
               "k8sattributes",
               "resource",
               "tail_sampling",
               "batch"
-            ] : [
+              ] : [
               "memory_limiter",
               "k8sattributes",
               "resource",

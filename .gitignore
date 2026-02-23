@@ -47,6 +47,14 @@ charts/
 *.bak
 *.log
 
+# Terraform plan output files
+*.tfplan
+*-plan-output.txt
+*-plan-output.json
+terraform-plan-*
+plan.out
+plan.json
+
 # Ignore kubeconfig files
 kubeconfig
 *.kubeconfig

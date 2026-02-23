@@ -31,17 +31,17 @@ provider "helm" {
   }
 }
 
-  # Import root module
+# Import root module
 module "telemetry" {
   source = "../.."
 
-  environment                         = "dev"
-  namespace                           = "telemetry"
-  create_namespace                    = true
+  environment      = "dev"
+  namespace        = "telemetry"
+  create_namespace = true
 
   # OTel Collector Configuration
-  otel_collector_replicas             = 2
-  otel_collector_version              = "0.95.0"
+  otel_collector_replicas = 2
+  otel_collector_version  = "0.95.0"
   otel_collector_resources = {
     requests = {
       cpu    = "200m"
@@ -61,15 +61,15 @@ module "telemetry" {
   otel_collector_hpa_memory_threshold = 80
 
   # Jaeger Configuration
-  jaeger_chart_version                = "2.0.0"
-  jaeger_storage_type                 = "elasticsearch"
-  jaeger_query_replicas               = 1
-  jaeger_collector_replicas           = 1
+  jaeger_chart_version      = "2.0.0"
+  jaeger_storage_type       = "elasticsearch"
+  jaeger_query_replicas     = 1
+  jaeger_collector_replicas = 1
 
   # Elasticsearch Configuration
-  elasticsearch_enabled               = true
-  elasticsearch_replicas              = 1
-  elasticsearch_storage_size          = "30Gi"
+  elasticsearch_enabled      = true
+  elasticsearch_replicas     = 1
+  elasticsearch_storage_size = "30Gi"
   elasticsearch_resources = {
     requests = {
       cpu    = "500m"
@@ -82,11 +82,11 @@ module "telemetry" {
   }
 
   # Data Retention
-  data_retention_days                 = 3
+  data_retention_days = 3
 
   # Sampling
-  enable_sampling                     = false
-  sampling_percentage                 = 100
+  enable_sampling     = false
+  sampling_percentage = 100
 
   # Labels
   labels = {

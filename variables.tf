@@ -109,6 +109,42 @@ variable "elasticsearch_enabled" {
   default     = true
 }
 
+variable "kube_prometheus_enabled" {
+  description = "Enable kube-prometheus-stack deployment"
+  type        = bool
+  default     = true
+}
+
+variable "kube_prometheus_create_storage_classes" {
+  description = "Create storage classes for kube-prometheus-stack"
+  type        = bool
+  default     = true
+}
+
+variable "prometheus_resources" {
+  description = "Prometheus resource requests and limits"
+  type = object({
+    requests = object({
+      cpu    = string
+      memory = string
+    })
+    limits = object({
+      cpu    = string
+      memory = string
+    })
+  })
+  default = {
+    requests = {
+      cpu    = "1000m"
+      memory = "2Gi"
+    }
+    limits = {
+      cpu    = "4000m"
+      memory = "8Gi"
+    }
+  }
+}
+
 variable "elasticsearch_replicas" {
   description = "Number of Elasticsearch replicas"
   type        = number
@@ -196,7 +232,7 @@ variable "annotations" {
 variable "node_selector" {
   description = "Node selector for pod scheduling"
   type        = map(string)
-  default     = {
+  default = {
     telemetry = "true"
   }
 }

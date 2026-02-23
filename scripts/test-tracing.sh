@@ -28,6 +28,24 @@ kubectl port-forward -n telemetry svc/otel-collector 4318:4318 &
 PF_PID2=$!
 sleep 3
 
+# 3a. Port forward Grafana
+echo -e "${YELLOW}Step 3a: Port-forwarding Grafana to localhost:3000${NC}"
+kubectl port-forward -n telemetry svc/kube-prometheus-stack-grafana 3000:80 &
+PF_PID3=$!
+sleep 2
+
+# 3b. Port forward Prometheus
+echo -e "${YELLOW}Step 3b: Port-forwarding Prometheus to localhost:9090${NC}"
+kubectl port-forward -n telemetry svc/kube-prometheus-stack-prometheus 9090:9090 &
+PF_PID4=$!
+sleep 2
+
+# 3c. Port forward Alertmanager
+echo -e "${YELLOW}Step 3c: Port-forwarding Alertmanager to localhost:9093${NC}"
+kubectl port-forward -n telemetry svc/kube-prometheus-stack-alertmanager 9093:9093 &
+PF_PID5=$!
+sleep 2
+
 # 4. Send test traces
 echo -e "${YELLOW}Step 4: Sending test trace to OTel Collector...${NC}"
 curl -X POST http://localhost:4318/v1/traces \
@@ -76,6 +94,16 @@ echo "📊 Jaeger UI: http://localhost:16686"
 echo "   - Service: test-service"
 echo "   - Operation: test-operation"
 echo ""
+echo "� Grafana: http://localhost:3000"
+echo "   - Default credentials: admin / (get from secret)"
+echo "   - kubectl get secret -n telemetry kube-prometheus-stack-grafana -o jsonpath='{.data.admin-password}' | base64 -d"
+echo ""
+echo "📊 Prometheus: http://localhost:9090"
+echo "   - Query metrics and check targets"
+echo ""
+echo "🔔 Alertmanager: http://localhost:9093"
+echo "   - Manage alerts"
+echo ""
 echo "🔍 To check Elasticsearch directly:"
 echo "   kubectl exec -n telemetry elasticsearch-master-0 -- curl -s 'http://localhost:9200/jaeger-span-*/_search?pretty&size=5'"
 echo ""
@@ -83,7 +111,7 @@ echo "📈 OTel Collector metrics:"
 echo "   curl http://localhost:8888/metrics"
 echo ""
 echo "🛑 To stop port-forwarding:"
-echo "   kill $PF_PID $PF_PID2"
+echo "   kill $PF_PID $PF_PID2 $PF_PID3 $PF_PID4 $PF_PID5"
 echo ""
 echo "Press Ctrl+C when done testing..."
 
