@@ -96,6 +96,10 @@ alertmanager:
 grafana:
   enabled: true
   replicas: ${grafana_replicas}
+  # Recreate: required for RWO PVC — kill old pod first so PVC is released before new pod starts.
+  # RollingUpdate would leave both pods competing for the same ReadWriteOnce volume → stuck init.
+  deploymentStrategy:
+    type: Recreate
   nodeSelector:
     ${node_selector_key}: "${node_selector_value}"
   affinity:
@@ -114,6 +118,9 @@ grafana:
       memory: "${grafana_resources_limits_memory}"
   persistence:
     enabled: true
+%{ if grafana_existing_claim != "" }
+    existingClaim: ${grafana_existing_claim}
+%{ endif }
     storageClassName: ${grafana_storage_class}
     accessModes:
       - ReadWriteOnce

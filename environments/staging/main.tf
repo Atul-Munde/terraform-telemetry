@@ -40,34 +40,66 @@ module "telemetry" {
   namespace        = "telemetry"
   create_namespace = true
 
-  # OTel Collector Configuration
-  otel_collector_replicas = 2
-  otel_collector_version  = "0.95.0"
-  otel_collector_resources = {
+  # ---------------------------------------------------------------------------
+  # OTel Operator
+  # ---------------------------------------------------------------------------
+  otel_operator_enabled      = true
+  otel_operator_chart_version = "0.66.0"
+  otel_operator_replicas     = 2
+  otel_collector_image_tag   = "0.105.0"  # matches operator chart 0.66.0 bundled default
+  app_namespace              = "telemetry"
+
+  # OTel Agent (DaemonSet)
+  otel_agent_resources = {
     requests = {
-      cpu    = "300m"
-      memory = "512Mi"
+      cpu    = "100m"
+      memory = "256Mi"
     }
     limits = {
-      cpu    = "1500m"
+      cpu    = "250m"
+      memory = "512Mi"
+    }
+  }
+  otel_agent_node_selector = { "otel-agent" = "true" }
+
+  # OTel Gateway (StatefulSet)
+  gateway_min_replicas = 2
+  gateway_max_replicas = 5
+  otel_gateway_resources = {
+    requests = {
+      cpu    = "500m"
+      memory = "1Gi"
+    }
+    limits = {
+      cpu    = "2"  # Kubernetes normalises "2000m" → "2"; use whole-core form directly
       memory = "2Gi"
     }
   }
 
-  # HPA Configuration
-  otel_collector_hpa_enabled          = true
-  otel_collector_hpa_min_replicas     = 2
-  otel_collector_hpa_max_replicas     = 8
-  otel_collector_hpa_cpu_threshold    = 70
-  otel_collector_hpa_memory_threshold = 80
+  # Tail sampling
+  tail_sampling_decision_wait     = 30
+  tail_sampling_normal_percentage = 50
+  tail_sampling_slow_threshold_ms = 2000
+  tail_sampling_num_traces        = 50000
 
+  # Infra metrics — disabled in staging
+  infra_metrics_enabled = false
+
+  # Auto-instrumentation
+  instrumentation_enabled      = true
+  nodejs_instrumentation_image = "ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-nodejs:0.69.0"
+
+  # ---------------------------------------------------------------------------
   # Jaeger Configuration
+  # ---------------------------------------------------------------------------
   jaeger_chart_version      = "2.0.0"
   jaeger_storage_type       = "elasticsearch"
   jaeger_query_replicas     = 2
   jaeger_collector_replicas = 2
 
+  # ---------------------------------------------------------------------------
   # Elasticsearch Configuration
+  # ---------------------------------------------------------------------------
   elasticsearch_enabled       = true
   elasticsearch_replicas      = 2
   elasticsearch_storage_size  = "75Gi"
@@ -83,9 +115,12 @@ module "telemetry" {
     }
   }
 
+  # ---------------------------------------------------------------------------
   # kube-prometheus Configuration
+  # ---------------------------------------------------------------------------
   kube_prometheus_enabled                = true
   kube_prometheus_create_storage_classes = true
+  grafana_existing_claim                 = "kube-prometheus-stack-grafana"
   prometheus_resources = {
     requests = {
       cpu    = "2000m"
@@ -99,10 +134,6 @@ module "telemetry" {
 
   # Data Retention
   data_retention_days = 7
-
-  # Sampling
-  enable_sampling     = false
-  sampling_percentage = 100
 
   # Node Placement
   node_selector = {
@@ -122,12 +153,16 @@ output "namespace" {
   value = module.telemetry.namespace
 }
 
-output "otel_collector_grpc_endpoint" {
-  value = module.telemetry.otel_collector_grpc_endpoint
+output "otel_agent_grpc_endpoint" {
+  value = module.telemetry.otel_agent_grpc_endpoint
 }
 
-output "otel_collector_http_endpoint" {
-  value = module.telemetry.otel_collector_http_endpoint
+output "otel_agent_http_endpoint" {
+  value = module.telemetry.otel_agent_http_endpoint
+}
+
+output "instrumentation_annotation_command" {
+  value = module.telemetry.instrumentation_annotation_command
 }
 
 output "jaeger_ui_port_forward_command" {

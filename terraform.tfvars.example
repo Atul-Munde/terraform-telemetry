@@ -1,42 +1,87 @@
 # Example Terraform variables file
 # Copy this file to terraform.tfvars and adjust values for your environment
+# Sensitive values (passwords) should be passed via TF_VAR_* environment variables
+# instead of being stored in this file.
 
 # Environment Configuration
 environment = "dev"
 namespace   = "telemetry"
 
-# OpenTelemetry Collector Configuration
-otel_collector_replicas = 2
-otel_collector_version  = "0.95.0"
+# ---------------------------------------------------------------------------
+# OTel Operator
+# ---------------------------------------------------------------------------
+otel_operator_enabled       = true
+otel_operator_chart_version = "0.57.0"
+otel_operator_replicas      = 2
+otel_collector_image_tag    = "0.95.0"
+app_namespace               = "telemetry"
 
-otel_collector_resources = {
+# OTel Agent (DaemonSet) resources
+otel_agent_resources = {
   requests = {
-    cpu    = "200m"
+    cpu    = "100m"
     memory = "256Mi"
   }
   limits = {
-    cpu    = "1000m"
-    memory = "1Gi"
+    cpu    = "250m"
+    memory = "512Mi"
   }
 }
 
-# HPA Configuration for OTel Collector
-otel_collector_hpa_enabled          = true
-otel_collector_hpa_min_replicas     = 2
-otel_collector_hpa_max_replicas     = 10
-otel_collector_hpa_cpu_threshold    = 70
-otel_collector_hpa_memory_threshold = 80
+# OTel Gateway (StatefulSet)
+gateway_min_replicas = 2   # MUST be >= 2 for correct tail_sampling
+gateway_max_replicas = 8
+otel_gateway_resources = {
+  requests = {
+    cpu    = "500m"
+    memory = "1Gi"
+  }
+  limits = {
+    cpu    = "2000m"
+    memory = "2Gi"
+  }
+}
 
+# Tail sampling
+tail_sampling_decision_wait     = 30   # seconds
+tail_sampling_normal_percentage = 50   # keep 50% of normal traces; 100% in dev
+tail_sampling_slow_threshold_ms = 2000
+tail_sampling_num_traces        = 50000
+
+# ---------------------------------------------------------------------------
+# Infra metrics (optional)
+# ---------------------------------------------------------------------------
+infra_metrics_enabled = false
+
+# Uncomment and set via TF_VAR_* to enable:
+# mongodb_host     = "mongodb.telemetry.svc.cluster.local:27017"
+# mongodb_username = "monitoring"
+# rabbitmq_host    = "rabbitmq.telemetry.svc.cluster.local:15692"
+# rabbitmq_username = "monitoring"
+# redis_host       = "redis.telemetry.svc.cluster.local:6379"
+# postgresql_host  = "postgres.telemetry.svc.cluster.local:5432"
+# postgresql_username = "monitoring"
+
+# ---------------------------------------------------------------------------
+# Auto-instrumentation
+# ---------------------------------------------------------------------------
+instrumentation_enabled      = true
+nodejs_instrumentation_image = "ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-nodejs:0.69.0"
+
+# ---------------------------------------------------------------------------
 # Jaeger Configuration
-jaeger_chart_version       = "2.0.0"
-jaeger_storage_type        = "elasticsearch"
-jaeger_query_replicas      = 2
-jaeger_collector_replicas  = 2
+# ---------------------------------------------------------------------------
+jaeger_chart_version      = "2.0.0"
+jaeger_storage_type       = "elasticsearch"
+jaeger_query_replicas     = 2
+jaeger_collector_replicas = 2
 
+# ---------------------------------------------------------------------------
 # Elasticsearch Configuration
-elasticsearch_enabled      = true
-elasticsearch_replicas     = 1
-elasticsearch_storage_size = "50Gi"
+# ---------------------------------------------------------------------------
+elasticsearch_enabled       = true
+elasticsearch_replicas      = 1
+elasticsearch_storage_size  = "50Gi"
 elasticsearch_storage_class = ""  # Use default storage class
 
 elasticsearch_resources = {
@@ -53,13 +98,11 @@ elasticsearch_resources = {
 # Data Retention
 data_retention_days = 7
 
-# Sampling Configuration
-enable_sampling      = false
-sampling_percentage  = 100
-
+# ---------------------------------------------------------------------------
 # Labels and Annotations
+# ---------------------------------------------------------------------------
 labels = {
-  team = "platform"
+  team        = "platform"
   cost-center = "engineering"
 }
 

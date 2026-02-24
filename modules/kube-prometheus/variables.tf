@@ -161,6 +161,12 @@ variable "grafana_storage_class" {
   default     = "obs-kube-grafana"
 }
 
+variable "grafana_existing_claim" {
+  description = "Name of an existing PVC to use for Grafana. Set on re-deploys to avoid Helm trying to patch the immutable volumeName field on a bound PVC. Leave empty on fresh installs."
+  type        = string
+  default     = ""
+}
+
 variable "grafana_resources" {
   description = "Grafana resource requests and limits"
   type = object({
