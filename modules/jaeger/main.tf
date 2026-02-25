@@ -14,14 +14,17 @@ resource "helm_release" "jaeger" {
 
   values = [
     templatefile("${path.module}/templates/values.yaml.tpl", {
-      storage_type       = var.storage_type
-      elasticsearch_host = var.elasticsearch_host
-      elasticsearch_port = var.elasticsearch_port
-      collector_replicas = var.collector_replicas
-      query_replicas     = var.query_replicas
-      environment        = var.environment
-      node_selector      = var.node_selector
-      tolerations        = var.tolerations
+      storage_type           = var.storage_type
+      elasticsearch_host     = var.elasticsearch_host
+      elasticsearch_port     = var.elasticsearch_port
+      elasticsearch_user     = var.elastic_username
+      elasticsearch_password = var.elastic_password
+      es_auth_enabled        = var.elastic_password != ""
+      collector_replicas     = var.collector_replicas
+      query_replicas         = var.query_replicas
+      environment            = var.environment
+      node_selector          = var.node_selector
+      tolerations            = var.tolerations
     })
   ]
 }

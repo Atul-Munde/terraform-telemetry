@@ -70,3 +70,16 @@ variable "tolerations" {
   }))
   default = []
 }
+
+variable "elastic_password" {
+  description = "Elasticsearch elastic user password — used for Jaeger ES storage auth"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "elastic_username" {
+  description = "Elasticsearch username for Jaeger storage"
+  type        = string
+  default     = "elastic"
+}

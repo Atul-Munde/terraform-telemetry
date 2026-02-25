@@ -39,7 +39,7 @@ kubectl get pods -n opentelemetry-operator-system --no-headers \
 
 echo -e "\n  Telemetry stack pods:"
 kubectl get pods -n "$NAMESPACE" --no-headers \
-  | grep -E "otel-agent|otel-gateway|jaeger|grafana|prometheus-[0-9]|elasticsearch-master" \
+  | grep -E "otel-agent|otel-gateway|jaeger|grafana|prometheus-[0-9]|elasticsearch-master|kibana" \
   | awk '{printf "  %-55s %-20s %s\n", $1, $3, $4}' || true
 
 echo -e "\n  OTelCollector CRD status:"
@@ -73,6 +73,7 @@ port_forward "OTel Agent(gRPC)" "otel-agent-collector"                  4317   4
 port_forward "Grafana"        "kube-prometheus-stack-grafana"           3000   80
 port_forward "Prometheus"     "kube-prometheus-stack-prometheus"        9090   9090
 port_forward "Alertmanager"   "kube-prometheus-stack-alertmanager"      9093   9093
+port_forward "Kibana"         "kibana-kibana"                           5601   5601
 sleep 6
 
 # ─── Step 4: Send test trace ─────────────────────────────────────────────────
@@ -163,10 +164,36 @@ echo "  Wait ~35s before searching Jaeger or Elasticsearch."
 
 # ─── Step 6: Elasticsearch index check ───────────────────────────────────────
 echo -e "\n${YELLOW}Step 6: Elasticsearch index check${NC}"
+ES_PASS=$(kubectl get secret -n "$NAMESPACE" elasticsearch-credentials \
+  -o jsonpath='{.data.ELASTIC_PASSWORD}' 2>/dev/null | base64 -d 2>/dev/null || echo "Intangles@2026")
 kubectl exec -n "$NAMESPACE" elasticsearch-master-0 -- \
-  curl -s "http://localhost:9200/_cat/indices/jaeger-*?v&h=health,status,index,docs.count" \
+  curl -s -k -u "elastic:${ES_PASS}" \
+  "https://localhost:9200/_cat/indices/jaeger-*?v&h=health,status,index,docs.count" \
   2>/dev/null | head -20 \
   || echo "  (elasticsearch not reachable or no jaeger indices yet)"
+
+# ─── Step 6b: Kibana health check ────────────────────────────────────────────
+echo -e "\n${YELLOW}Step 6b: Kibana status${NC}"
+KIBANA_POD=$(kubectl get pods -n "$NAMESPACE" --no-headers \
+  | awk '/kibana-kibana/{print $1}' | head -1)
+if [[ -n "$KIBANA_POD" ]]; then
+  KIBANA_STATUS=$(kubectl exec -n "$NAMESPACE" "$KIBANA_POD" -- \
+    curl -s --max-time 5 http://localhost:5601/api/status \
+    2>/dev/null | python3 -c \
+    "import sys,json; d=json.load(sys.stdin); s=d.get('status',{}).get('overall',{}); print(s.get('level','unknown'))" \
+    2>/dev/null || echo "not ready")
+  if [[ "$KIBANA_STATUS" == "available" ]]; then
+    echo -e "${GREEN}  ✓ Kibana status: ${KIBANA_STATUS}${NC}"
+  else
+    echo -e "${YELLOW}  ⚠ Kibana status: ${KIBANA_STATUS} (may still be initialising)${NC}"
+  fi
+  echo -e "  Version: $(kubectl exec -n "$NAMESPACE" "$KIBANA_POD" -- \
+    curl -s --max-time 5 http://localhost:5601/api/status 2>/dev/null \
+    | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('version',{}).get('number','unknown'))" \
+    2>/dev/null || echo 'unknown')"
+else
+  echo -e "${RED}  ✗ No Kibana pod found in namespace ${NAMESPACE}${NC}"
+fi
 
 # ─── Step 7: Gateway pipeline metrics ────────────────────────────────────────
 echo -e "\n${YELLOW}Step 7: Gateway telemetry — pipeline throughput (from Prometheus scrape)${NC}"
@@ -201,9 +228,13 @@ echo "     Try: otelcol_receiver_accepted_spans_total"
 echo ""
 echo "  🔔 Alertmanager    http://localhost:9093"
 echo ""
+echo "  � Kibana          http://localhost:5601"
+echo "     user: elastic   password: ${ES_PASS:-Intangles@2026}"
+echo "     → Discover → select jaeger-* index pattern to explore traces"
+echo ""
 echo "  🔍 Elasticsearch search (run after ~35s):"
 echo "     kubectl exec -n $NAMESPACE elasticsearch-master-0 -- \\"
-echo "       curl -s 'http://localhost:9200/jaeger-span-*/_search?pretty&size=3'"
+echo "       curl -s -k -u elastic:${ES_PASS:-Intangles@2026} 'https://localhost:9200/jaeger-span-*/_search?pretty&size=3'"
 echo ""
 echo "  📡 Agent pipeline metrics:"
 echo "     kubectl exec -n $NAMESPACE deploy/otel-agent-collector -- wget -qO- http://localhost:8888/metrics | grep otelcol_"

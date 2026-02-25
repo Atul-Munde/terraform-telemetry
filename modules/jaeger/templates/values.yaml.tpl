@@ -9,11 +9,21 @@ storage:
   type: ${storage_type}
 %{ if storage_type == "elasticsearch" }
   elasticsearch:
-    scheme: http
+    # ES 8.x uses HTTPS + x-pack security; skip host-verify for self-signed cert
+    scheme: https
     host: ${elasticsearch_host}
     port: ${elasticsearch_port}
+%{ if es_auth_enabled }
+    user: "${elasticsearch_user}"
+    existingSecret: "elasticsearch-credentials"
+    existingSecretKey: "ELASTIC_PASSWORD"
+%{ else }
     user: ""
     password: ""
+%{ endif }
+    cmdlineParams:
+      es.tls.enabled: "true"
+      es.tls.skip-host-verify: "true"
 %{ endif }
 
 # Jaeger Agent (DaemonSet) - disabled, using OTel Collector instead

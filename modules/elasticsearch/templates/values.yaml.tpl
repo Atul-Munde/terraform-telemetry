@@ -26,8 +26,13 @@ volumeClaimTemplate:
     requests:
       storage: ${storage_size}
 
-# Security completely disabled for internal use
+# Protocol — must be https when X-Pack security is enabled (ES 8.x auto-enables HTTP TLS)
+# TLS is pod-to-pod only; external TLS is terminated at the ALB
+%{ if xpack_security_enabled }
+protocol: https
+%{ else }
 protocol: http
+%{ endif }
 httpPort: 9200
 transportPort: 9300
 
@@ -71,9 +76,10 @@ esConfig:
   elasticsearch.yml: |
     network.host: 0.0.0.0
 
-    # Security settings - disable for internal clusters
-    xpack.security.enabled: false
+    # X-Pack security — enabled when elastic_password is provided, disabled otherwise
+    xpack.security.enabled: ${xpack_security_enabled}
     xpack.security.enrollment.enabled: false
+    # Keep HTTP SSL off — TLS is terminated at the ALB/load balancer
     xpack.security.http.ssl.enabled: false
     xpack.security.transport.ssl.enabled: false
 
@@ -84,12 +90,26 @@ esConfig:
     # Auto-create indices
     action.auto_create_index: true
 
-# Extra environment variables
+# Let the chart create elasticsearch-master-credentials with OUR password so that
+# both Kibana pre-install job (which reads from that secret) and our own secret agree.
+%{ if xpack_security_enabled }
+secret:
+  enabled: true
+  password: "${elastic_password}"
+%{ endif }
+
+# Extra environment variables — password from secret when X-Pack is enabled
 extraEnvs:
+%{ if xpack_security_enabled }
   - name: ELASTIC_PASSWORD
-    value: changeme
+    valueFrom:
+      secretKeyRef:
+        name: ${elastic_secret_name}
+        key: ELASTIC_PASSWORD
+%{ else }
   - name: xpack.security.enabled
     value: "false"
+%{ endif }
 
 # Pod disruption budget
 maxUnavailable: 1

@@ -437,3 +437,113 @@ variable "tolerations" {
     }
   ]
 }
+
+# ---------------------------------------------------------------------------
+# Kibana
+# ---------------------------------------------------------------------------
+variable "kibana_enabled" {
+  description = "Deploy Kibana — requires elasticsearch_enabled = true"
+  type        = bool
+  default     = false
+}
+
+variable "kibana_chart_version" {
+  description = "Kibana Helm chart version — must match Elasticsearch version"
+  type        = string
+  default     = "8.5.1"
+}
+
+variable "kibana_replicas" {
+  description = "Number of Kibana replicas (>=2 for production HA)"
+  type        = number
+  default     = 2
+}
+
+variable "kibana_storage_size" {
+  description = "Size of the Kibana saved-objects PVC"
+  type        = string
+  default     = "5Gi"
+}
+
+variable "kibana_storage_class" {
+  description = "Storage class for Kibana PVC — empty string uses cluster default"
+  type        = string
+  default     = ""
+}
+
+variable "kibana_log_level" {
+  description = "Kibana log level: warn for production, info for staging/dev"
+  type        = string
+  default     = "warn"
+}
+
+variable "kibana_resources" {
+  description = "Resource requests and limits for Kibana"
+  type = object({
+    requests = object({
+      cpu    = string
+      memory = string
+    })
+    limits = object({
+      cpu    = string
+      memory = string
+    })
+  })
+  default = {
+    requests = {
+      cpu    = "500m"
+      memory = "1Gi"
+    }
+    limits = {
+      cpu    = "1000m"
+      memory = "2Gi"
+    }
+  }
+}
+
+variable "kibana_create_ingress" {
+  description = "Create an AWS ALB Ingress for Kibana"
+  type        = bool
+  default     = false
+}
+
+variable "kibana_ingress_host" {
+  description = "Public hostname for Kibana — e.g. kibana.test.intangles.com"
+  type        = string
+  default     = ""
+}
+
+# ---------------------------------------------------------------------------
+# Shared secrets — set via TF_VAR_* env vars, NEVER in tfvars files
+# ---------------------------------------------------------------------------
+variable "elastic_password" {
+  description = "Elasticsearch 'elastic' superuser password. Use TF_VAR_elastic_password env var."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "kibana_encryption_key" {
+  description = "32-character encryption key for Kibana saved objects. Use TF_VAR_kibana_encryption_key env var."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "alb_certificate_arn" {
+  description = "ACM certificate ARN for ALB HTTPS termination. Set per environment in tfvars — this is not a secret."
+  type        = string
+  default     = ""
+}
+
+variable "alb_group_name" {
+  description = "ALB IngressGroup name (alb.ingress.kubernetes.io/group.name). Set to your existing group to share the ALB instead of creating a new one."
+  type        = string
+  default     = "intangles-ingress"
+}
+
+variable "kibana_ingress_class" {
+  description = "Kubernetes IngressClass name used by aws-load-balancer-controller (usually 'alb')"
+  type        = string
+  default     = "alb"
+}

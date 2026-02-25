@@ -78,3 +78,10 @@ variable "tolerations" {
   }))
   default = []
 }
+
+variable "elastic_password" {
+  description = "Password for the Elasticsearch 'elastic' superuser. Set via TF_VAR_elastic_password env var — never commit to tfvars."
+  type        = string
+  sensitive   = true
+  default     = ""
+}

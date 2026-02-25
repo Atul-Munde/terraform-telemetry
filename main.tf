@@ -44,8 +44,41 @@ module "elasticsearch" {
   retention_days = var.data_retention_days
   node_selector  = var.node_selector
   tolerations    = var.tolerations
+  elastic_password = var.elastic_password
 
   depends_on = [module.namespace]
+}
+
+# Deploy Kibana (if enabled — requires elasticsearch_enabled = true)
+module "kibana" {
+  source = "./modules/kibana"
+  count  = var.kibana_enabled ? 1 : 0
+
+  namespace             = module.namespace.name
+  environment           = var.environment
+  chart_version         = var.kibana_chart_version
+  replicas              = var.kibana_replicas
+  resources             = var.kibana_resources
+  elasticsearch_host    = var.elasticsearch_enabled ? (
+    var.elastic_password != ""
+      ? "https://elasticsearch-master.${var.namespace}.svc:9200"
+      : "http://elasticsearch-master.${var.namespace}.svc:9200"
+  ) : ""
+  elastic_password      = var.elastic_password
+  kibana_encryption_key = var.kibana_encryption_key
+  storage_class         = var.kibana_storage_class
+  storage_size          = var.kibana_storage_size
+  labels                = local.common_labels
+  node_selector         = var.node_selector
+  tolerations           = var.tolerations
+  log_level             = var.kibana_log_level
+  create_ingress        = var.kibana_create_ingress
+  ingress_host          = var.kibana_ingress_host
+  alb_certificate_arn   = var.alb_certificate_arn
+  ingress_class_name    = var.kibana_ingress_class
+  alb_group_name        = var.alb_group_name
+
+  depends_on = [module.namespace, module.elasticsearch]
 }
 
 # Deploy Jaeger
@@ -54,7 +87,12 @@ module "jaeger" {
 
   namespace          = module.namespace.name
   environment        = var.environment
+  chart_version      = var.jaeger_chart_version
+  storage_type       = var.jaeger_storage_type
+  query_replicas     = var.jaeger_query_replicas
+  collector_replicas = var.jaeger_collector_replicas
   elasticsearch_host = var.elasticsearch_enabled ? "elasticsearch-master.${var.namespace}.svc.cluster.local" : ""
+  elastic_password   = var.elastic_password
   node_selector      = var.node_selector
   tolerations        = var.tolerations
 

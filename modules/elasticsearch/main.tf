@@ -6,6 +6,27 @@ locals {
   heap_size       = "${local.heap_size_mb}m"
 }
 
+# Elasticsearch credentials secret — password never stored in Helm values or tfvars
+resource "kubernetes_secret" "elasticsearch_credentials" {
+  count = var.elastic_password != "" ? 1 : 0
+
+  metadata {
+    name      = "elasticsearch-credentials"
+    namespace = var.namespace
+    labels = {
+      "app.kubernetes.io/name"       = "elasticsearch"
+      "app.kubernetes.io/component"  = "credentials"
+      "app.kubernetes.io/managed-by" = "terraform"
+    }
+  }
+
+  type = "Opaque"
+
+  data = {
+    ELASTIC_PASSWORD = var.elastic_password
+  }
+}
+
 # Elasticsearch Helm Release
 resource "helm_release" "elasticsearch" {
   name             = "elasticsearch"
@@ -28,8 +49,13 @@ resource "helm_release" "elasticsearch" {
       storage_size              = var.storage_size
       node_selector             = var.node_selector
       tolerations               = var.tolerations
+      xpack_security_enabled    = var.elastic_password != ""
+      elastic_secret_name       = var.elastic_password != "" ? "elasticsearch-credentials" : ""
+      elastic_password          = var.elastic_password
     })
   ]
+
+  depends_on = [kubernetes_secret.elasticsearch_credentials]
 }
 
 # CronJob for index cleanup

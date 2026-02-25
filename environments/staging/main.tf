@@ -32,6 +32,23 @@ provider "helm" {
   }
 }
 
+# ---------------------------------------------------------------------------
+# Secret variables — must be supplied via TF_VAR_* env vars
+# ---------------------------------------------------------------------------
+variable "elastic_password" {
+  description = "Elasticsearch elastic user password"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "kibana_encryption_key" {
+  description = "Kibana encryption key (minimum 32 characters)"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
 # Import root module
 module "telemetry" {
   source = "../.."
@@ -116,6 +133,31 @@ module "telemetry" {
   }
 
   # ---------------------------------------------------------------------------
+  # Kibana Configuration
+  # ---------------------------------------------------------------------------
+  kibana_enabled         = true
+  kibana_replicas        = 1
+  kibana_chart_version   = "8.5.1"
+  kibana_storage_size    = "5Gi"
+  kibana_storage_class   = "gp3"
+  kibana_log_level       = "info"
+  kibana_create_ingress  = true
+  kibana_ingress_host    = "kibana.test.intangles.com"
+  kibana_ingress_class   = "alb"
+  alb_group_name         = "intangles-ingress"
+  alb_certificate_arn    = "arn:aws:acm:ap-south-1:294202164463:certificate/6aaf4f38-c00f-4ad2-bf41-ae4ab88123a0"
+  kibana_resources = {
+    requests = {
+      cpu    = "500m"
+      memory = "1Gi"
+    }
+    limits = {
+      cpu    = "1000m"
+      memory = "2Gi"
+    }
+  }
+
+  # ---------------------------------------------------------------------------
   # kube-prometheus Configuration
   # ---------------------------------------------------------------------------
   kube_prometheus_enabled                = true
@@ -146,6 +188,10 @@ module "telemetry" {
     environment = "staging"
     team        = "platform"
   }
+
+  # Secret credentials — passed from TF_VAR_* env vars (X-Pack security enabled)
+  elastic_password      = var.elastic_password
+  kibana_encryption_key = var.kibana_encryption_key
 }
 
 # Outputs
@@ -167,4 +213,8 @@ output "instrumentation_annotation_command" {
 
 output "jaeger_ui_port_forward_command" {
   value = module.telemetry.jaeger_ui_port_forward_command
+}
+
+output "kibana_url" {
+  value = module.telemetry.kibana_url
 }

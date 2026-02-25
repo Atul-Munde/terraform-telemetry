@@ -63,3 +63,8 @@ output "application_config_snippet" {
     }
   }
 }
+
+output "kibana_url" {
+  description = "Kibana endpoint (public URL if ingress enabled, internal URL otherwise)"
+  value       = var.kibana_enabled ? module.kibana[0].public_url : "kibana disabled"
+}
