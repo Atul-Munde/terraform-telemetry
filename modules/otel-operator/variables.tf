@@ -179,6 +179,32 @@ variable "prometheus_remote_write_endpoint" {
   default     = "http://kube-prometheus-stack-prometheus.telemetry.svc.cluster.local:9090/api/v1/write"
 }
 
+variable "dash0_endpoint" {
+  description = "Dash0 OTLP gRPC endpoint"
+  type        = string
+  default     = "ingress.us-west-2.aws.dash0.com:4317"
+}
+
+variable "dash0_auth_token" {
+  description = "Dash0 API auth token (Bearer). Use TF_VAR_dash0_auth_token env var."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "elasticsearch_endpoint" {
+  description = "Elasticsearch endpoint for logs export"
+  type        = string
+  default     = "https://elasticsearch-master.telemetry.svc.cluster.local:9200"
+}
+
+variable "elastic_password" {
+  description = "Elasticsearch 'elastic' superuser password for logs export"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
 # =============================================================
 # Infra Metrics (optional)
 # =============================================================

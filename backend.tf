@@ -8,7 +8,7 @@ terraform {
     region         = "ap-south-1"
     dynamodb_table = "terraform-state-lock"
     encrypt        = true
-    profile        = "mum-test"
+    profile        = "ITM"
   }
 }
 

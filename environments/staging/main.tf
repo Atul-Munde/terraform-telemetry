@@ -18,7 +18,7 @@ terraform {
     region         = "ap-south-1"
     dynamodb_table = "terraform-state-lock"
     encrypt        = true
-    profile        = "mum-test"
+    profile        = "ITM"
   }
 }
 
@@ -44,6 +44,13 @@ variable "elastic_password" {
 
 variable "kibana_encryption_key" {
   description = "Kibana encryption key (minimum 32 characters)"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "dash0_auth_token" {
+  description = "Dash0 API auth token (Bearer). Use TF_VAR_dash0_auth_token env var."
   type        = string
   sensitive   = true
   default     = ""
@@ -192,6 +199,7 @@ module "telemetry" {
   # Secret credentials — passed from TF_VAR_* env vars (X-Pack security enabled)
   elastic_password      = var.elastic_password
   kibana_encryption_key = var.kibana_encryption_key
+  dash0_auth_token      = var.dash0_auth_token
 }
 
 # Outputs

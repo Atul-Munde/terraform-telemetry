@@ -133,6 +133,9 @@ module "otel_operator" {
   # Backends
   jaeger_endpoint                  = "jaeger-collector.${var.namespace}.svc.cluster.local:4317"
   prometheus_remote_write_endpoint = "http://kube-prometheus-stack-prometheus.${var.namespace}.svc.cluster.local:9090/api/v1/write"
+  dash0_auth_token                 = var.dash0_auth_token
+  elasticsearch_endpoint           = "https://elasticsearch-master.${var.namespace}.svc.cluster.local:9200"
+  elastic_password                 = var.elastic_password
 
   # Infra metrics (opt-in)
   infra_metrics_enabled   = var.infra_metrics_enabled
