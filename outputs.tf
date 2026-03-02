@@ -39,6 +39,11 @@ output "jaeger_ui_port_forward_command" {
   value       = "kubectl port-forward -n ${module.namespace.name} svc/jaeger-query 16686:16686"
 }
 
+output "jaeger_url" {
+  description = "Jaeger UI endpoint (public URL if ingress enabled, internal URL otherwise)"
+  value       = module.jaeger.public_url
+}
+
 # ---------------------------------------------------------------------------
 # Elasticsearch
 # ---------------------------------------------------------------------------

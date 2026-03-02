@@ -113,6 +113,9 @@ module "telemetry" {
   jaeger_storage_type       = "elasticsearch"
   jaeger_query_replicas     = 2
   jaeger_collector_replicas = 2
+  jaeger_create_ingress     = true
+  jaeger_ingress_host       = "jaeger.test.intangles.com"
+  jaeger_ingress_class      = "alb"
 
   # ---------------------------------------------------------------------------
   # Elasticsearch Configuration
@@ -213,6 +216,10 @@ output "instrumentation_annotation_command" {
 
 output "jaeger_ui_port_forward_command" {
   value = module.telemetry.jaeger_ui_port_forward_command
+}
+
+output "jaeger_url" {
+  value = module.telemetry.jaeger_url
 }
 
 output "kibana_url" {

@@ -93,8 +93,14 @@ module "jaeger" {
   collector_replicas = var.jaeger_collector_replicas
   elasticsearch_host = var.elasticsearch_enabled ? "elasticsearch-master.${var.namespace}.svc.cluster.local" : ""
   elastic_password   = var.elastic_password
+  labels             = local.common_labels
   node_selector      = var.node_selector
   tolerations        = var.tolerations
+  create_ingress     = var.jaeger_create_ingress
+  ingress_host       = var.jaeger_ingress_host
+  alb_certificate_arn  = var.alb_certificate_arn
+  ingress_class_name   = var.jaeger_ingress_class
+  alb_group_name       = var.alb_group_name
 
   depends_on = [module.namespace, module.elasticsearch]
 }

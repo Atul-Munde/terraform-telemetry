@@ -22,3 +22,8 @@ output "collector_http_endpoint" {
   description = "Jaeger Collector HTTP endpoint"
   value       = "${local.release_name}-collector.${var.namespace}.svc.cluster.local:14268"
 }
+
+output "public_url" {
+  description = "Public URL — HTTPS via ALB when create_ingress=true, internal URL otherwise"
+  value       = var.create_ingress ? "https://${var.ingress_host}" : "http://${local.release_name}-query.${var.namespace}.svc.cluster.local:16686"
+}

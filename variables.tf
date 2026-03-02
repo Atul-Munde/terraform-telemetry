@@ -394,6 +394,24 @@ variable "jaeger_collector_replicas" {
   default     = 2
 }
 
+variable "jaeger_create_ingress" {
+  description = "Create an AWS ALB Ingress to expose Jaeger UI publicly"
+  type        = bool
+  default     = false
+}
+
+variable "jaeger_ingress_host" {
+  description = "Public hostname for Jaeger UI — e.g. jaeger.test.intangles.com"
+  type        = string
+  default     = ""
+}
+
+variable "jaeger_ingress_class" {
+  description = "Kubernetes IngressClass name used by aws-load-balancer-controller (usually 'alb')"
+  type        = string
+  default     = "alb"
+}
+
 variable "data_retention_days" {
   description = "Number of days to retain trace data"
   type        = number
