@@ -183,5 +183,15 @@ module "kube_prometheus" {
   prometheus_resources   = var.prometheus_resources
   grafana_existing_claim = var.grafana_existing_claim
 
+  # Ingress
+  create_ingress_prometheus = var.prometheus_create_ingress
+  prometheus_ingress_host   = var.prometheus_ingress_host
+  create_ingress_grafana    = var.grafana_create_ingress
+  grafana_ingress_host      = var.grafana_ingress_host
+  alb_certificate_arn       = var.alb_certificate_arn
+  alb_group_name            = var.alb_group_name
+  ingress_class_name        = var.kibana_ingress_class
+  labels                    = local.common_labels
+
   depends_on = [module.namespace]
 }

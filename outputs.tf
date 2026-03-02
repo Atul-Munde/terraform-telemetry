@@ -73,3 +73,13 @@ output "kibana_url" {
   description = "Kibana endpoint (public URL if ingress enabled, internal URL otherwise)"
   value       = var.kibana_enabled ? module.kibana[0].public_url : "kibana disabled"
 }
+
+output "prometheus_url" {
+  description = "Prometheus endpoint (public URL if ingress enabled, internal URL otherwise)"
+  value       = var.kube_prometheus_enabled ? module.kube_prometheus[0].prometheus_url : "kube-prometheus disabled"
+}
+
+output "grafana_url" {
+  description = "Grafana endpoint (public URL if ingress enabled, internal URL otherwise)"
+  value       = var.kube_prometheus_enabled ? module.kube_prometheus[0].grafana_url : "kube-prometheus disabled"
+}

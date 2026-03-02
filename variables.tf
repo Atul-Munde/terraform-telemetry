@@ -565,3 +565,30 @@ variable "kibana_ingress_class" {
   type        = string
   default     = "alb"
 }
+
+# ---------------------------------------------------------------------------
+# Prometheus / Grafana Ingress
+# ---------------------------------------------------------------------------
+variable "prometheus_create_ingress" {
+  description = "Create an AWS ALB Ingress to expose Prometheus publicly"
+  type        = bool
+  default     = false
+}
+
+variable "prometheus_ingress_host" {
+  description = "Public hostname for Prometheus — e.g. prometheus.test.intangles.com"
+  type        = string
+  default     = ""
+}
+
+variable "grafana_create_ingress" {
+  description = "Create an AWS ALB Ingress to expose Grafana publicly"
+  type        = bool
+  default     = false
+}
+
+variable "grafana_ingress_host" {
+  description = "Public hostname for Grafana — e.g. grafana.test.intangles.com"
+  type        = string
+  default     = ""
+}

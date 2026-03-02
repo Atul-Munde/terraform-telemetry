@@ -177,6 +177,12 @@ module "telemetry" {
     }
   }
 
+  # Prometheus & Grafana public ingress
+  prometheus_create_ingress = true
+  prometheus_ingress_host   = "prometheus.test.intangles.com"
+  grafana_create_ingress    = true
+  grafana_ingress_host      = "grafana.test.intangles.com"
+
   # Data Retention
   data_retention_days = 7
 
@@ -224,4 +230,12 @@ output "jaeger_url" {
 
 output "kibana_url" {
   value = module.telemetry.kibana_url
+}
+
+output "prometheus_url" {
+  value = module.telemetry.prometheus_url
+}
+
+output "grafana_url" {
+  value = module.telemetry.grafana_url
 }
