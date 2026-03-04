@@ -10,6 +10,25 @@ locals {
     "environment"                 = var.environment
   }, var.labels)
 
+  # ALB annotations — internet-facing, HTTPS-only, IP target mode.
+  alb_annotations = merge(
+    {
+      "alb.ingress.kubernetes.io/scheme"                       = "internet-facing"
+      "alb.ingress.kubernetes.io/target-type"                  = "ip"
+      "alb.ingress.kubernetes.io/certificate-arn"              = var.alb_certificate_arn
+      "alb.ingress.kubernetes.io/listen-ports"                 = "[{\"HTTPS\":443}]"
+      "alb.ingress.kubernetes.io/ssl-redirect"                 = "443"
+      "alb.ingress.kubernetes.io/healthcheck-path"             = "/"
+      "alb.ingress.kubernetes.io/healthcheck-interval-seconds" = "15"
+      "alb.ingress.kubernetes.io/healthcheck-timeout-seconds"  = "5"
+      "alb.ingress.kubernetes.io/healthy-threshold-count"      = "2"
+      "alb.ingress.kubernetes.io/unhealthy-threshold-count"    = "3"
+    },
+    var.alb_group_name != "" ? {
+      "alb.ingress.kubernetes.io/group.name" = var.alb_group_name
+    } : {}
+  )
+
   # -------------------------------------------------------------------------
   # CPU normalization — the Kubernetes API server stores whole-CPU millicores
   # as integers: "2000m" → "2", "4000m" → "4".  The kubernetes_manifest
@@ -60,4 +79,46 @@ resource "helm_release" "otel_operator" {
       node_selector                  = var.node_selector
     })
   ]
+}
+
+# ---------------------------------------------------------------------------
+# ALB Ingress — OTel Agent OTLP HTTP (port 4318) for external developer access
+# ---------------------------------------------------------------------------
+resource "kubernetes_ingress_v1" "otel_agent" {
+  count = var.create_ingress ? 1 : 0
+
+  metadata {
+    name      = "otel-agent"
+    namespace = var.namespace
+    labels = merge(local.common_labels, {
+      "app.kubernetes.io/name"       = "otel-agent"
+      "app.kubernetes.io/component"  = "ingress"
+      "app.kubernetes.io/managed-by" = "terraform"
+    })
+    annotations = local.alb_annotations
+  }
+
+  spec {
+    ingress_class_name = var.ingress_class_name
+
+    rule {
+      host = var.ingress_host
+      http {
+        path {
+          path      = "/"
+          path_type = "Prefix"
+          backend {
+            service {
+              name = "otel-agent-collector"
+              port {
+                number = 4318
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  depends_on = [kubernetes_manifest.otel_agent]
 }

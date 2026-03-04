@@ -319,3 +319,36 @@ variable "labels" {
   type        = map(string)
   default     = {}
 }
+
+# =============================================================
+# Ingress — OTel Agent OTLP HTTP (public developer access)
+# =============================================================
+variable "create_ingress" {
+  description = "Create an AWS ALB Ingress to expose OTel Agent OTLP HTTP (4318) publicly"
+  type        = bool
+  default     = false
+}
+
+variable "ingress_host" {
+  description = "Public hostname for OTel endpoint — e.g. otel.test.intangles.com"
+  type        = string
+  default     = ""
+}
+
+variable "alb_certificate_arn" {
+  description = "ACM certificate ARN for ALB HTTPS termination"
+  type        = string
+  default     = ""
+}
+
+variable "ingress_class_name" {
+  description = "Kubernetes IngressClass name (usually 'alb')"
+  type        = string
+  default     = "alb"
+}
+
+variable "alb_group_name" {
+  description = "ALB IngressGroup name — share the ALB across services"
+  type        = string
+  default     = "intangles-ingress"
+}

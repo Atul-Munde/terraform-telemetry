@@ -106,6 +106,10 @@ module "telemetry" {
   instrumentation_enabled      = true
   nodejs_instrumentation_image = "ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-nodejs:0.69.0"
 
+  # OTel Agent public ingress (OTLP HTTP for developer local testing)
+  otel_create_ingress = true
+  otel_ingress_host   = "otel.test.intangles.com"
+
   # ---------------------------------------------------------------------------
   # Jaeger Configuration
   # ---------------------------------------------------------------------------
@@ -238,4 +242,8 @@ output "prometheus_url" {
 
 output "grafana_url" {
   value = module.telemetry.grafana_url
+}
+
+output "otel_public_otlp_url" {
+  value = module.telemetry.otel_public_otlp_url
 }

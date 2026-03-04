@@ -592,3 +592,18 @@ variable "grafana_ingress_host" {
   type        = string
   default     = ""
 }
+
+# ---------------------------------------------------------------------------
+# OTel Agent Ingress
+# ---------------------------------------------------------------------------
+variable "otel_create_ingress" {
+  description = "Create an AWS ALB Ingress to expose OTel Agent OTLP HTTP (4318) for external developer access"
+  type        = bool
+  default     = false
+}
+
+variable "otel_ingress_host" {
+  description = "Public hostname for OTel OTLP endpoint — e.g. otel.test.intangles.com"
+  type        = string
+  default     = ""
+}

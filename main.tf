@@ -165,6 +165,13 @@ module "otel_operator" {
   tolerations             = var.tolerations
   labels                  = local.common_labels
 
+  # Ingress — OTLP HTTP public endpoint for developers
+  create_ingress      = var.otel_create_ingress
+  ingress_host        = var.otel_ingress_host
+  alb_certificate_arn = var.alb_certificate_arn
+  alb_group_name      = var.alb_group_name
+  ingress_class_name  = var.kibana_ingress_class
+
   depends_on = [
     module.namespace,
     module.jaeger,

@@ -16,6 +16,11 @@ output "otel_agent_http_endpoint" {
   value       = var.otel_operator_enabled ? module.otel_operator[0].agent_http_endpoint : "otel-operator disabled"
 }
 
+output "otel_public_otlp_url" {
+  description = "Public OTLP HTTP endpoint for developers (https if ingress enabled)"
+  value       = var.otel_operator_enabled ? module.otel_operator[0].public_otlp_url : "otel-operator disabled"
+}
+
 output "otel_gateway_metrics_endpoint" {
   description = "Gateway Prometheus scrape endpoint (port 8889)"
   value       = var.otel_operator_enabled ? module.otel_operator[0].gateway_metrics_endpoint : "otel-operator disabled"
