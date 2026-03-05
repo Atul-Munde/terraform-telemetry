@@ -272,22 +272,26 @@ resource "kubernetes_manifest" "otel_gateway" {
             }
           }
 
-          # Prometheus remote write: push metrics to kube-prometheus-stack
-        #   "prometheusremotewrite/prometheus" = {
-        #     endpoint = var.prometheus_remote_write_endpoint
-        #     tls      = { insecure = true }
-        #     resource_to_telemetry_conversion = { enabled = true }
-        #     retry_on_failure = {
-        #       enabled          = true
-        #       initial_interval = "5s"
-        #       max_interval     = "30s"
-        #       max_elapsed_time = "120s"
-        #     }
-        #   }
+          # Push application metrics to the configured metrics backend
+          # (VictoriaMetrics vminsert, or kube-prometheus when VM is disabled).
+          # WAL-backed queue means zero metric loss during backend restarts;
+          # resource_to_telemetry_conversion preserves all k8s pod/namespace labels.
+          "prometheusremotewrite/metrics-backend" = {
+            endpoint = var.prometheus_remote_write_endpoint
+            tls      = { insecure = true }
+            resource_to_telemetry_conversion = { enabled = true }
+            retry_on_failure = {
+              enabled          = true
+              initial_interval = "5s"
+              max_interval     = "30s"
+              max_elapsed_time = "120s"
+            }
+          }
 
-        # TODO: scrape data from prometheus receiver instead of remote write to avoid OTel collector → Prometheus → OTel collector loop for metrics
-
-          # Scrape endpoint for Prometheus ServiceMonitor (port 8889)
+          # Collector self-metrics on :8889 — exposes OTel collector operational
+          # telemetry (queue depth, dropped spans, export success rate, memory usage).
+          # VMAgent scrapes this via VMServiceScrape. Kept out of the app metrics
+          # pipeline so collector health is always visible even if vminsert is down.
           prometheus = {
             endpoint = "0.0.0.0:8889"
             resource_to_telemetry_conversion = { enabled = true }
@@ -312,7 +316,7 @@ resource "kubernetes_manifest" "otel_gateway" {
             metrics = {
               receivers  = ["otlp"]
               processors = ["memory_limiter", "batch"]
-              exporters  = ["prometheus", "otlp/dash0"]
+              exporters  = ["prometheusremotewrite/metrics-backend", "otlp/dash0"]
             }
             logs = {
               receivers  = ["otlp"]

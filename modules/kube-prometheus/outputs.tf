@@ -31,13 +31,13 @@ output "alertmanager_service" {
 }
 
 output "prometheus_url" {
-  description = "Internal Prometheus URL"
-  value       = "http://${helm_release.kube_prometheus_stack.name}-prometheus.${var.namespace}.svc.cluster.local:9090"
+  description = "Prometheus endpoint (public URL if ingress enabled, internal URL otherwise)"
+  value       = var.create_ingress_prometheus ? "https://${var.prometheus_ingress_host}" : "http://${helm_release.kube_prometheus_stack.name}-prometheus.${var.namespace}.svc.cluster.local:9090"
 }
 
 output "grafana_url" {
-  description = "Internal Grafana URL"
-  value       = "http://${helm_release.kube_prometheus_stack.name}-grafana.${var.namespace}.svc.cluster.local:80"
+  description = "Grafana endpoint (public URL if ingress enabled, internal URL otherwise)"
+  value       = var.create_ingress_grafana ? "https://${var.grafana_ingress_host}" : "http://${helm_release.kube_prometheus_stack.name}-grafana.${var.namespace}.svc.cluster.local:80"
 }
 
 output "alertmanager_url" {

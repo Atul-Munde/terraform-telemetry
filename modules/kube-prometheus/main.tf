@@ -3,6 +3,25 @@
 
 locals {
   name = "kube-prometheus"
+
+  # ALB annotations — internet-facing, HTTPS-only, IP target mode.
+  alb_annotations = merge(
+    {
+      "alb.ingress.kubernetes.io/scheme"                       = "internet-facing"
+      "alb.ingress.kubernetes.io/target-type"                  = "ip"
+      "alb.ingress.kubernetes.io/certificate-arn"              = var.alb_certificate_arn
+      "alb.ingress.kubernetes.io/listen-ports"                 = "[{\"HTTPS\":443}]"
+      "alb.ingress.kubernetes.io/ssl-redirect"                 = "443"
+      "alb.ingress.kubernetes.io/healthcheck-path"             = "/"
+      "alb.ingress.kubernetes.io/healthcheck-interval-seconds" = "15"
+      "alb.ingress.kubernetes.io/healthcheck-timeout-seconds"  = "5"
+      "alb.ingress.kubernetes.io/healthy-threshold-count"      = "2"
+      "alb.ingress.kubernetes.io/unhealthy-threshold-count"    = "3"
+    },
+    var.alb_group_name != "" ? {
+      "alb.ingress.kubernetes.io/group.name" = var.alb_group_name
+    } : {}
+  )
 }
 
 # Storage Classes
@@ -152,6 +171,10 @@ resource "helm_release" "kube_prometheus_stack" {
 
       # Feature flags
       default_rules_enabled = var.default_rules_enabled
+
+      # Grafana additional datasources
+      vm_grafana_datasource_url     = var.vm_grafana_datasource_url
+      jaeger_grafana_datasource_url = var.jaeger_grafana_datasource_url
     })
   ]
 
@@ -161,4 +184,88 @@ resource "helm_release" "kube_prometheus_stack" {
     kubernetes_storage_class_v1.alertmanager,
     kubernetes_storage_class_v1.grafana,
   ]
+}
+
+# ---------------------------------------------------------------------------
+# ALB Ingress — Prometheus (optional)
+# ---------------------------------------------------------------------------
+resource "kubernetes_ingress_v1" "prometheus" {
+  count = var.create_ingress_prometheus ? 1 : 0
+
+  metadata {
+    name      = "prometheus"
+    namespace = var.namespace
+    labels = merge(var.labels, {
+      "app.kubernetes.io/name"       = "prometheus"
+      "app.kubernetes.io/component"  = "ingress"
+      "app.kubernetes.io/managed-by" = "terraform"
+    })
+    annotations = local.alb_annotations
+  }
+
+  spec {
+    ingress_class_name = var.ingress_class_name
+
+    rule {
+      host = var.prometheus_ingress_host
+      http {
+        path {
+          path      = "/"
+          path_type = "Prefix"
+          backend {
+            service {
+              name = "${var.release_name}-prometheus"
+              port {
+                number = 9090
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  depends_on = [helm_release.kube_prometheus_stack]
+}
+
+# ---------------------------------------------------------------------------
+# ALB Ingress — Grafana (optional)
+# ---------------------------------------------------------------------------
+resource "kubernetes_ingress_v1" "grafana" {
+  count = var.create_ingress_grafana ? 1 : 0
+
+  metadata {
+    name      = "grafana"
+    namespace = var.namespace
+    labels = merge(var.labels, {
+      "app.kubernetes.io/name"       = "grafana"
+      "app.kubernetes.io/component"  = "ingress"
+      "app.kubernetes.io/managed-by" = "terraform"
+    })
+    annotations = local.alb_annotations
+  }
+
+  spec {
+    ingress_class_name = var.ingress_class_name
+
+    rule {
+      host = var.grafana_ingress_host
+      http {
+        path {
+          path      = "/"
+          path_type = "Prefix"
+          backend {
+            service {
+              name = "${var.release_name}-grafana"
+              port {
+                number = 80
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  depends_on = [helm_release.kube_prometheus_stack]
 }

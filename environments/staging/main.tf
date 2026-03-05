@@ -10,6 +10,14 @@ terraform {
       source  = "hashicorp/helm"
       version = "~> 2.12"
     }
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+    kubectl = {
+      source  = "gavinbunney/kubectl"
+      version = "~> 1.14"
+    }
   }
 
   backend "s3" {
@@ -30,6 +38,15 @@ provider "helm" {
   kubernetes {
     config_path = "~/.kube/config"
   }
+}
+
+provider "aws" {
+  region  = "ap-south-1"
+  profile = "mum-test"
+}
+
+provider "kubectl" {
+  config_path = "~/.kube/config"
 }
 
 # ---------------------------------------------------------------------------
@@ -113,6 +130,10 @@ module "telemetry" {
   instrumentation_enabled      = true
   nodejs_instrumentation_image = "ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-nodejs:0.69.0"
 
+  # OTel Agent public ingress (OTLP HTTP for developer local testing)
+  otel_create_ingress = true
+  otel_ingress_host   = "otel.test.intangles.com"
+
   # ---------------------------------------------------------------------------
   # Jaeger Configuration
   # ---------------------------------------------------------------------------
@@ -120,6 +141,9 @@ module "telemetry" {
   jaeger_storage_type       = "elasticsearch"
   jaeger_query_replicas     = 2
   jaeger_collector_replicas = 2
+  jaeger_create_ingress     = true
+  jaeger_ingress_host       = "jaeger.test.intangles.com"
+  jaeger_ingress_class      = "alb"
 
   # ---------------------------------------------------------------------------
   # Elasticsearch Configuration
@@ -181,6 +205,12 @@ module "telemetry" {
     }
   }
 
+  # Prometheus & Grafana public ingress
+  prometheus_create_ingress = true
+  prometheus_ingress_host   = "prometheus.test.intangles.com"
+  grafana_create_ingress    = true
+  grafana_ingress_host      = "grafana.test.intangles.com"
+
   # Data Retention
   data_retention_days = 7
 
@@ -200,6 +230,36 @@ module "telemetry" {
   elastic_password      = var.elastic_password
   kibana_encryption_key = var.kibana_encryption_key
   dash0_auth_token      = var.dash0_auth_token
+
+  # ---------------------------------------------------------------------------
+  # VictoriaMetrics — enabled in staging for validation
+  # ---------------------------------------------------------------------------
+  victoria_metrics_enabled = true
+
+  vmstorage_replicas    = 3
+  vminsert_replicas     = 3
+  vmselect_replicas     = 3
+  vm_replication_factor = 2
+  vm_retention_period   = "7d"
+
+  vmstorage_storage_size  = "100Gi"
+  vm_storage_class_name   = "vm-storage-gp3"
+  vm_create_storage_class = true
+
+  vminsert_min_replicas = 3
+  vminsert_max_replicas = 6
+  vmselect_min_replicas = 3
+  vmselect_max_replicas = 6
+
+  vmagent_enabled = true
+  vmalert_enabled = false
+  vmauth_enabled  = false
+
+  vm_create_ingress     = true
+  vmselect_ingress_host = "vm.test.intangles.com"
+  vm_ingress_class_name = "alb"
+
+  vm_backup_enabled = false
 }
 
 # Outputs
@@ -223,6 +283,34 @@ output "jaeger_ui_port_forward_command" {
   value = module.telemetry.jaeger_ui_port_forward_command
 }
 
+output "jaeger_url" {
+  value = module.telemetry.jaeger_url
+}
+
 output "kibana_url" {
   value = module.telemetry.kibana_url
+}
+
+output "prometheus_url" {
+  value = module.telemetry.prometheus_url
+}
+
+output "grafana_url" {
+  value = module.telemetry.grafana_url
+}
+
+output "otel_public_otlp_url" {
+  value = module.telemetry.otel_public_otlp_url
+}
+
+output "vm_prometheus_remote_write_url" {
+  value = module.telemetry.vm_prometheus_remote_write_url
+}
+
+output "vm_grafana_datasource_url" {
+  value = module.telemetry.vm_grafana_datasource_url
+}
+
+output "vm_ui_url" {
+  value = module.telemetry.vm_ui_url
 }

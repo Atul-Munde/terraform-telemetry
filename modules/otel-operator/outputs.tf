@@ -8,6 +8,11 @@ output "agent_http_endpoint" {
   value       = "http://otel-agent-collector.${var.namespace}.svc.cluster.local:4318"
 }
 
+output "public_otlp_url" {
+  description = "Public OTLP HTTP endpoint for developers (https if ingress enabled, internal URL otherwise)"
+  value       = var.create_ingress ? "https://${var.ingress_host}" : "http://otel-agent-collector.${var.namespace}.svc.cluster.local:4318"
+}
+
 output "gateway_metrics_endpoint" {
   description = "Gateway Prometheus scrape endpoint (port 8889)"
   value       = "otel-gateway-collector.${var.namespace}.svc.cluster.local:8889"

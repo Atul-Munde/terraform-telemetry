@@ -210,3 +210,66 @@ variable "labels" {
   type        = map(string)
   default     = {}
 }
+
+# ---------------------------------------------------------------------------
+# Ingress — Prometheus
+# ---------------------------------------------------------------------------
+variable "create_ingress_prometheus" {
+  description = "Create an AWS ALB Ingress to expose Prometheus publicly"
+  type        = bool
+  default     = false
+}
+
+variable "prometheus_ingress_host" {
+  description = "Public hostname for Prometheus — e.g. prometheus.test.intangles.com"
+  type        = string
+  default     = ""
+}
+
+# ---------------------------------------------------------------------------
+# Ingress — Grafana
+# ---------------------------------------------------------------------------
+variable "create_ingress_grafana" {
+  description = "Create an AWS ALB Ingress to expose Grafana publicly"
+  type        = bool
+  default     = false
+}
+
+variable "grafana_ingress_host" {
+  description = "Public hostname for Grafana — e.g. grafana.test.intangles.com"
+  type        = string
+  default     = ""
+}
+
+# ---------------------------------------------------------------------------
+# Shared ALB settings (used by both ingresses)
+# ---------------------------------------------------------------------------
+variable "alb_certificate_arn" {
+  description = "ACM certificate ARN for ALB HTTPS termination"
+  type        = string
+  default     = ""
+}
+
+variable "ingress_class_name" {
+  description = "Kubernetes IngressClass name used by aws-load-balancer-controller (usually 'alb')"
+  type        = string
+  default     = "alb"
+}
+
+variable "alb_group_name" {
+  description = "ALB IngressGroup name — share the ALB across services"
+  type        = string
+  default     = "intangles-ingress"
+}
+
+variable "vm_grafana_datasource_url" {
+  description = "VictoriaMetrics vmselect URL to provision as a Grafana datasource (Prometheus-compatible). e.g. http://vmselect-vmcluster.<namespace>.svc.cluster.local:8481/select/0/prometheus"
+  type        = string
+  default     = ""
+}
+
+variable "jaeger_grafana_datasource_url" {
+  description = "Jaeger query URL to provision as a Grafana datasource. e.g. http://jaeger-query.<namespace>:16686"
+  type        = string
+  default     = ""
+}

@@ -10,6 +10,10 @@ terraform {
       source  = "hashicorp/helm"
       version = "~> 2.12"
     }
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
   }
 
   backend "s3" {
@@ -29,6 +33,10 @@ provider "helm" {
   kubernetes {
     config_path = "~/.kube/config"
   }
+}
+
+provider "aws" {
+  region = "ap-south-1"
 }
 
 # Import root module
@@ -150,6 +158,44 @@ module "telemetry" {
     team        = "platform"
     criticality = "high"
   }
+
+  # ---------------------------------------------------------------------------
+  # VictoriaMetrics — full HA production configuration
+  # ---------------------------------------------------------------------------
+  victoria_metrics_enabled = true
+
+  vmstorage_replicas    = 3
+  vminsert_replicas     = 3
+  vmselect_replicas     = 3
+  vm_replication_factor = 2
+  vm_retention_period   = "7d"
+
+  vmstorage_storage_size  = "100Gi"
+  vm_storage_class_name   = "vm-storage-gp3"
+  vm_create_storage_class = true
+
+  vminsert_min_replicas = 3
+  vminsert_max_replicas = 10
+  vmselect_min_replicas = 3
+  vmselect_max_replicas = 10
+
+  vmagent_enabled  = true
+  vmalert_enabled  = true
+  alertmanager_url = var.alertmanager_url
+
+  vmauth_enabled  = true
+  vmauth_password = var.vmauth_password
+
+  vm_create_ingress     = true
+  vmselect_ingress_host = "vm.test.intangles.com"
+  vm_ingress_class_name = "alb"
+
+  vm_backup_enabled        = true
+  vm_backup_schedule       = "0 2 * * *"
+  vm_backup_s3_bucket_name = ""
+  vm_backup_s3_region      = "ap-south-1"
+  vm_backup_retention_days = 30
+  eks_oidc_provider_arn    = var.eks_oidc_provider_arn
 }
 
 # ---------------------------------------------------------------------------
@@ -165,6 +211,25 @@ variable "redis_host"         { type = string; default = "" }
 variable "postgresql_host"    { type = string; default = "" }
 variable "postgresql_username" { type = string; default = "" }
 variable "postgresql_password" { type = string; sensitive = true; default = "" }
+
+variable "vmauth_password" {
+  description = "VMAuth default user password (sensitive)"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "alertmanager_url" {
+  description = "Alertmanager URL for VMAlert to send alerts to"
+  type        = string
+  default     = ""
+}
+
+variable "eks_oidc_provider_arn" {
+  description = "EKS OIDC provider ARN for vmbackup IRSA"
+  type        = string
+  default     = ""
+}
 
 # ---------------------------------------------------------------------------
 # Outputs
@@ -191,4 +256,20 @@ output "jaeger_ui_port_forward_command" {
 
 output "elasticsearch_endpoint" {
   value = module.telemetry.elasticsearch_endpoint
+}
+
+output "vm_prometheus_remote_write_url" {
+  value = module.telemetry.vm_prometheus_remote_write_url
+}
+
+output "vm_grafana_datasource_url" {
+  value = module.telemetry.vm_grafana_datasource_url
+}
+
+output "vm_ui_url" {
+  value = module.telemetry.vm_ui_url
+}
+
+output "vm_backup_s3_bucket" {
+  value = module.telemetry.vm_backup_s3_bucket
 }

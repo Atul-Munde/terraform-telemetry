@@ -83,3 +83,36 @@ variable "elastic_username" {
   type        = string
   default     = "elastic"
 }
+
+# ---------------------------------------------------------------------------
+# ALB Ingress
+# ---------------------------------------------------------------------------
+variable "create_ingress" {
+  description = "Create an AWS ALB Ingress to expose Jaeger UI publicly"
+  type        = bool
+  default     = false
+}
+
+variable "ingress_host" {
+  description = "Fully-qualified hostname — e.g. jaeger.test.intangles.com"
+  type        = string
+  default     = ""
+}
+
+variable "alb_certificate_arn" {
+  description = "ACM certificate ARN for HTTPS termination"
+  type        = string
+  default     = ""
+}
+
+variable "ingress_class_name" {
+  description = "Kubernetes IngressClass name (usually 'alb')"
+  type        = string
+  default     = "alb"
+}
+
+variable "alb_group_name" {
+  description = "ALB IngressGroup name — share an existing ALB or leave empty for a dedicated one"
+  type        = string
+  default     = ""
+}
