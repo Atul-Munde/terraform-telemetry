@@ -9,6 +9,10 @@ provider "helm" {
   }
 }
 
+provider "aws" {
+  region = "ap-south-1"
+}
+
 # Local variables
 locals {
   common_labels = merge(
@@ -137,8 +141,10 @@ module "otel_operator" {
   tail_sampling_num_traces        = var.tail_sampling_num_traces
 
   # Backends
-  jaeger_endpoint                  = "jaeger-collector.${var.namespace}.svc.cluster.local:4317"
-  prometheus_remote_write_endpoint = "http://kube-prometheus-stack-prometheus.${var.namespace}.svc.cluster.local:9090/api/v1/write"
+  jaeger_endpoint = "jaeger-collector.${var.namespace}.svc.cluster.local:4317"
+  # When VictoriaMetrics is enabled, push directly to vminsert (WAL-buffered, zero loss).
+  # Falls back to kube-prometheus remote-write endpoint when VM is disabled.
+  prometheus_remote_write_endpoint = var.victoria_metrics_enabled ? "http://vminsert-${var.vm_cluster_name}.${var.namespace}.svc.cluster.local:8480/insert/0/prometheus/api/v1/write" : "http://kube-prometheus-stack-prometheus.${var.namespace}.svc.cluster.local:9090/api/v1/write"
 
   # Infra metrics (opt-in)
   infra_metrics_enabled   = var.infra_metrics_enabled
@@ -199,6 +205,75 @@ module "kube_prometheus" {
   alb_group_name            = var.alb_group_name
   ingress_class_name        = var.kibana_ingress_class
   labels                    = local.common_labels
+
+  # Provision VM + Jaeger datasources permanently in Grafana
+  vm_grafana_datasource_url     = var.victoria_metrics_enabled ? "http://vmselect-${var.vm_cluster_name}.${var.namespace}.svc.cluster.local:8481/select/0/prometheus" : ""
+  jaeger_grafana_datasource_url = "http://jaeger-query.${var.namespace}.svc.cluster.local:16686"
+
+  depends_on = [module.namespace]
+}
+
+# ---------------------------------------------------------------------------
+# VictoriaMetrics — HA metrics cluster (VMCluster CRD via VictoriaMetrics Operator)
+# ---------------------------------------------------------------------------
+module "victoria_metrics" {
+  source = "./modules/victoria-metrics"
+  count  = var.victoria_metrics_enabled ? 1 : 0
+
+  namespace   = module.namespace.name
+  environment = var.environment
+  labels      = local.common_labels
+
+  # Operator
+  vm_operator_chart_version = var.vm_operator_chart_version
+  vm_operator_namespace     = module.namespace.name
+  vm_operator_replicas      = var.environment == "production" ? 2 : 1
+
+  # VMCluster topology
+  vm_cluster_name    = var.vm_cluster_name
+  vmstorage_replicas = var.vmstorage_replicas
+  vminsert_replicas  = var.vminsert_replicas
+  vmselect_replicas  = var.vmselect_replicas
+  replication_factor = var.vm_replication_factor
+  retention_period   = var.vm_retention_period
+
+  # Storage
+  vmstorage_storage_size = var.vmstorage_storage_size
+  storage_class_name     = var.vm_storage_class_name
+  create_storage_class   = var.vm_create_storage_class
+
+  # HPA bounds
+  vminsert_min_replicas = var.vminsert_min_replicas
+  vminsert_max_replicas = var.vminsert_max_replicas
+  vmselect_min_replicas = var.vmselect_min_replicas
+  vmselect_max_replicas = var.vmselect_max_replicas
+
+  # Features
+  vmauth_enabled          = var.vmauth_enabled
+  vmauth_password         = var.vmauth_password
+  vmagent_enabled         = var.vmagent_enabled
+  vmalert_enabled         = var.vmalert_enabled
+  alertmanager_url        = var.alertmanager_url
+  kube_prometheus_enabled = var.kube_prometheus_enabled
+
+  # Ingress
+  create_ingress        = var.vm_create_ingress
+  vmselect_ingress_host = var.vmselect_ingress_host
+  alb_certificate_arn   = var.alb_certificate_arn
+  alb_group_name        = var.alb_group_name
+  ingress_class_name    = var.vm_ingress_class_name
+
+  # Backup
+  backup_enabled        = var.vm_backup_enabled
+  backup_schedule       = var.vm_backup_schedule
+  backup_s3_bucket_name = var.vm_backup_s3_bucket_name
+  backup_s3_region      = var.vm_backup_s3_region
+  backup_retention_days = var.vm_backup_retention_days
+  eks_oidc_provider_arn = var.eks_oidc_provider_arn
+
+  # Node placement (shared with other modules)
+  node_selector = var.node_selector
+  tolerations   = var.tolerations
 
   depends_on = [module.namespace]
 }

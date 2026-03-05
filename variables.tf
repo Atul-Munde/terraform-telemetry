@@ -607,3 +607,181 @@ variable "otel_ingress_host" {
   type        = string
   default     = ""
 }
+
+# ---------------------------------------------------------------------------
+# VictoriaMetrics
+# ---------------------------------------------------------------------------
+variable "victoria_metrics_enabled" {
+  description = "Deploy the VictoriaMetrics HA cluster (VMCluster + Operator)"
+  type        = bool
+  default     = false
+}
+
+variable "vm_operator_chart_version" {
+  description = "victoria-metrics-operator Helm chart version"
+  type        = string
+  default     = "0.59.1"
+}
+
+variable "vm_cluster_name" {
+  description = "Name of the VMCluster custom resource"
+  type        = string
+  default     = "vmcluster"
+}
+
+variable "vmstorage_replicas" {
+  description = "Number of vmstorage pods (StatefulSet). Must be >= 3 for HA."
+  type        = number
+  default     = 3
+}
+
+variable "vminsert_replicas" {
+  description = "Number of vminsert pods (Deployment). Must be >= 2 for HA."
+  type        = number
+  default     = 3
+}
+
+variable "vmselect_replicas" {
+  description = "Number of vmselect pods (Deployment). Must be >= 2 for HA."
+  type        = number
+  default     = 3
+}
+
+variable "vm_replication_factor" {
+  description = "VMCluster replication factor — how many vmstorage nodes each write is replicated across"
+  type        = number
+  default     = 2
+}
+
+variable "vm_retention_period" {
+  description = "Data retention period for VictoriaMetrics (e.g. '7d', '30d', '1y')"
+  type        = string
+  default     = "7d"
+}
+
+variable "vmstorage_storage_size" {
+  description = "PVC size for each vmstorage pod (EBS gp3)"
+  type        = string
+  default     = "100Gi"
+}
+
+variable "vm_storage_class_name" {
+  description = "StorageClass name for vmstorage PVCs"
+  type        = string
+  default     = "vm-storage-gp3"
+}
+
+variable "vm_create_storage_class" {
+  description = "Create the EBS gp3 StorageClass for vmstorage"
+  type        = bool
+  default     = true
+}
+
+variable "vminsert_min_replicas" {
+  description = "HPA minimum replicas for vminsert"
+  type        = number
+  default     = 3
+}
+
+variable "vminsert_max_replicas" {
+  description = "HPA maximum replicas for vminsert"
+  type        = number
+  default     = 10
+}
+
+variable "vmselect_min_replicas" {
+  description = "HPA minimum replicas for vmselect"
+  type        = number
+  default     = 3
+}
+
+variable "vmselect_max_replicas" {
+  description = "HPA maximum replicas for vmselect"
+  type        = number
+  default     = 10
+}
+
+variable "vmauth_enabled" {
+  description = "Deploy VMAuth proxy in front of vminsert/vmselect for basic authentication"
+  type        = bool
+  default     = false
+}
+
+variable "vmauth_password" {
+  description = "Password for VMAuth default user (sensitive)"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "vmagent_enabled" {
+  description = "Deploy VMAgent to scrape Kubernetes cluster metrics"
+  type        = bool
+  default     = true
+}
+
+variable "vmalert_enabled" {
+  description = "Deploy VMAlert to evaluate alerting and recording rules"
+  type        = bool
+  default     = false
+}
+
+variable "alertmanager_url" {
+  description = "Alertmanager URL to send alerts to (used by VMAlert)"
+  type        = string
+  default     = ""
+}
+
+variable "vm_create_ingress" {
+  description = "Create an ALB Ingress for the vmselect UI / query API"
+  type        = bool
+  default     = false
+}
+
+variable "vmselect_ingress_host" {
+  description = "Public hostname for vmselect UI — e.g. vm.test.intangles.com"
+  type        = string
+  default     = ""
+}
+
+variable "vm_ingress_class_name" {
+  description = "Ingress class name for VictoriaMetrics ingress (alb)"
+  type        = string
+  default     = "alb"
+}
+
+variable "vm_backup_enabled" {
+  description = "Enable scheduled vmstorage backups to S3"
+  type        = bool
+  default     = false
+}
+
+variable "vm_backup_schedule" {
+  description = "Cron expression for backup schedule"
+  type        = string
+  default     = "0 2 * * *"
+}
+
+variable "vm_backup_s3_bucket_name" {
+  description = "S3 bucket name for backups. Leave empty to auto-generate 'vm-backup-<environment>'"
+  type        = string
+  default     = ""
+}
+
+variable "vm_backup_s3_region" {
+  description = "AWS region for backup S3 bucket"
+  type        = string
+  default     = "ap-south-1"
+}
+
+variable "vm_backup_retention_days" {
+  description = "Days to keep backup objects in S3 before expiry"
+  type        = number
+  default     = 30
+}
+
+variable "eks_oidc_provider_arn" {
+  description = "OIDC provider ARN for EKS cluster (used for IRSA on vmbackup service account)"
+  type        = string
+  default     = ""
+}

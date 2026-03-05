@@ -261,3 +261,15 @@ variable "alb_group_name" {
   type        = string
   default     = "intangles-ingress"
 }
+
+variable "vm_grafana_datasource_url" {
+  description = "VictoriaMetrics vmselect URL to provision as a Grafana datasource (Prometheus-compatible). e.g. http://vmselect-vmcluster.<namespace>.svc.cluster.local:8481/select/0/prometheus"
+  type        = string
+  default     = ""
+}
+
+variable "jaeger_grafana_datasource_url" {
+  description = "Jaeger query URL to provision as a Grafana datasource. e.g. http://jaeger-query.<namespace>:16686"
+  type        = string
+  default     = ""
+}

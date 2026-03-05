@@ -88,3 +88,26 @@ output "grafana_url" {
   description = "Grafana endpoint (public URL if ingress enabled, internal URL otherwise)"
   value       = var.kube_prometheus_enabled ? module.kube_prometheus[0].grafana_url : "kube-prometheus disabled"
 }
+
+# ---------------------------------------------------------------------------
+# VictoriaMetrics
+# ---------------------------------------------------------------------------
+output "vm_prometheus_remote_write_url" {
+  description = "Full Prometheus remote-write URL for VictoriaMetrics. Set as prometheus_remote_write_endpoint in otel-operator module to replace kube-prometheus."
+  value       = var.victoria_metrics_enabled ? module.victoria_metrics[0].prometheus_remote_write_url : "victoria-metrics disabled"
+}
+
+output "vm_grafana_datasource_url" {
+  description = "Prometheus-compatible datasource URL for Grafana (VictoriaMetrics vmselect)"
+  value       = var.victoria_metrics_enabled ? module.victoria_metrics[0].grafana_datasource_url : "victoria-metrics disabled"
+}
+
+output "vm_ui_url" {
+  description = "Public vmselect UI URL (VMUI). Only populated when vm_create_ingress = true."
+  value       = var.victoria_metrics_enabled ? module.victoria_metrics[0].vmselect_ui_url : "victoria-metrics disabled"
+}
+
+output "vm_backup_s3_bucket" {
+  description = "S3 bucket used for VictoriaMetrics backups. Empty when vm_backup_enabled = false."
+  value       = var.victoria_metrics_enabled ? module.victoria_metrics[0].backup_s3_bucket : "victoria-metrics disabled"
+}

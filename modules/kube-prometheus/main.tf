@@ -171,6 +171,10 @@ resource "helm_release" "kube_prometheus_stack" {
 
       # Feature flags
       default_rules_enabled = var.default_rules_enabled
+
+      # Grafana additional datasources
+      vm_grafana_datasource_url     = var.vm_grafana_datasource_url
+      jaeger_grafana_datasource_url = var.jaeger_grafana_datasource_url
     })
   ]
 

@@ -10,6 +10,14 @@ terraform {
       source  = "hashicorp/helm"
       version = "~> 2.12"
     }
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+    kubectl = {
+      source  = "gavinbunney/kubectl"
+      version = "~> 1.14"
+    }
   }
 
   backend "s3" {
@@ -30,6 +38,15 @@ provider "helm" {
   kubernetes {
     config_path = "~/.kube/config"
   }
+}
+
+provider "aws" {
+  region  = "ap-south-1"
+  profile = "mum-test"
+}
+
+provider "kubectl" {
+  config_path = "~/.kube/config"
 }
 
 # ---------------------------------------------------------------------------
@@ -205,6 +222,36 @@ module "telemetry" {
   # Secret credentials — passed from TF_VAR_* env vars (X-Pack security enabled)
   elastic_password      = var.elastic_password
   kibana_encryption_key = var.kibana_encryption_key
+
+  # ---------------------------------------------------------------------------
+  # VictoriaMetrics — enabled in staging for validation
+  # ---------------------------------------------------------------------------
+  victoria_metrics_enabled = true
+
+  vmstorage_replicas    = 3
+  vminsert_replicas     = 3
+  vmselect_replicas     = 3
+  vm_replication_factor = 2
+  vm_retention_period   = "7d"
+
+  vmstorage_storage_size  = "100Gi"
+  vm_storage_class_name   = "vm-storage-gp3"
+  vm_create_storage_class = true
+
+  vminsert_min_replicas = 3
+  vminsert_max_replicas = 6
+  vmselect_min_replicas = 3
+  vmselect_max_replicas = 6
+
+  vmagent_enabled = true
+  vmalert_enabled = false
+  vmauth_enabled  = false
+
+  vm_create_ingress     = true
+  vmselect_ingress_host = "vm.test.intangles.com"
+  vm_ingress_class_name = "alb"
+
+  vm_backup_enabled = false
 }
 
 # Outputs
@@ -246,4 +293,16 @@ output "grafana_url" {
 
 output "otel_public_otlp_url" {
   value = module.telemetry.otel_public_otlp_url
+}
+
+output "vm_prometheus_remote_write_url" {
+  value = module.telemetry.vm_prometheus_remote_write_url
+}
+
+output "vm_grafana_datasource_url" {
+  value = module.telemetry.vm_grafana_datasource_url
+}
+
+output "vm_ui_url" {
+  value = module.telemetry.vm_ui_url
 }

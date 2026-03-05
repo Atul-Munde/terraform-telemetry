@@ -10,6 +10,10 @@ terraform {
       source  = "hashicorp/helm"
       version = "~> 2.12"
     }
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
   }
 
   backend "s3" {
@@ -29,6 +33,10 @@ provider "helm" {
   kubernetes {
     config_path = "~/.kube/config"
   }
+}
+
+provider "aws" {
+  region = "ap-south-1"
 }
 
 # Import root module
@@ -121,6 +129,11 @@ module "telemetry" {
     environment = "dev"
     team        = "platform"
   }
+
+  # ---------------------------------------------------------------------------
+  # VictoriaMetrics — disabled in dev
+  # ---------------------------------------------------------------------------
+  victoria_metrics_enabled = false
 }
 
 # Outputs

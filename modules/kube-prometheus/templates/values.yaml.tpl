@@ -137,6 +137,28 @@ grafana:
         folderUid: "default-dashboards"
         disableDelete: false
         allowUiUpdates: true
+  # Additional datasources provisioned via Helm (survive pod restarts)
+%{ if vm_grafana_datasource_url != "" }
+  additionalDataSources:
+    - name: VictoriaMetrics
+      type: prometheus
+      uid: victoriametrics
+      url: ${vm_grafana_datasource_url}
+      access: proxy
+      isDefault: false
+      jsonData:
+        httpMethod: POST
+        timeInterval: 30s
+        lookbackDelta: 1h
+%{ if jaeger_grafana_datasource_url != "" }
+    - name: Jaeger
+      type: jaeger
+      uid: jaeger
+      url: ${jaeger_grafana_datasource_url}
+      access: proxy
+%{ endif }
+%{ endif }
+
   # Security context
   securityContext:
     runAsNonRoot: true
