@@ -785,3 +785,13 @@ variable "eks_oidc_provider_arn" {
   type        = string
   default     = ""
 }
+
+# ---------------------------------------------------------------------------
+# Dash0
+# ---------------------------------------------------------------------------
+variable "dash0_auth_token" {
+  description = "Dash0 API auth token (Bearer). Use TF_VAR_dash0_auth_token env var."
+  type        = string
+  sensitive   = true
+  default     = ""
+}

@@ -66,6 +66,13 @@ variable "kibana_encryption_key" {
   default     = ""
 }
 
+variable "dash0_auth_token" {
+  description = "Dash0 API auth token (Bearer). Use TF_VAR_dash0_auth_token env var."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
 # Import root module
 module "telemetry" {
   source = "../.."
@@ -222,6 +229,7 @@ module "telemetry" {
   # Secret credentials — passed from TF_VAR_* env vars (X-Pack security enabled)
   elastic_password      = var.elastic_password
   kibana_encryption_key = var.kibana_encryption_key
+  dash0_auth_token      = var.dash0_auth_token
 
   # ---------------------------------------------------------------------------
   # VictoriaMetrics — enabled in staging for validation

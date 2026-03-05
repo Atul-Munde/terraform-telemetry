@@ -58,7 +58,7 @@ resource "helm_release" "elasticsearch" {
   depends_on = [kubernetes_secret.elasticsearch_credentials]
 }
 
-# CronJob for index cleanup
+# CronJob for index cleanup — deletes indices older than retention_days
 resource "kubernetes_cron_job_v1" "index_cleanup" {
   metadata {
     name      = "elasticsearch-index-cleanup"
@@ -93,14 +93,19 @@ resource "kubernetes_cron_job_v1" "index_cleanup" {
             restart_policy = "OnFailure"
 
             container {
-              name  = "curator"
-              image = "bitnami/elasticsearch-curator:5.8.4"
+              name  = "cleanup"
+              image = "curlimages/curl:8.5.0"
 
               command = [
                 "/bin/sh",
                 "-c",
                 <<-EOT
-                  curl -X GET "http://elasticsearch-master.${var.namespace}.svc.cluster.local:9200/_cluster/health" || echo "ES not ready yet"
+                  ES_URL="${var.elastic_password != "" ? "https" : "http"}://elasticsearch-master.${var.namespace}.svc.cluster.local:9200"
+                  AUTH="${var.elastic_password != "" ? "-u elastic:${var.elastic_password} --insecure" : ""}"
+                  echo "Deleting indices older than ${var.retention_days} days..."
+                  curl -s $AUTH -X DELETE "$ES_URL/*-*$(date -d "-${var.retention_days} days" +%Y.%m.%d 2>/dev/null || date -v-${var.retention_days}d +%Y.%m.%d)*" || true
+                  curl -s $AUTH -X DELETE "$ES_URL/jaeger-span-*" --data '{"query":{"range":{"startTimeMillis":{"lt":"now-${var.retention_days}d"}}}}' -H 'Content-Type: application/json' || true
+                  echo "Cleanup complete."
                 EOT
               ]
             }

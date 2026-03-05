@@ -145,6 +145,9 @@ module "otel_operator" {
   # When VictoriaMetrics is enabled, push directly to vminsert (WAL-buffered, zero loss).
   # Falls back to kube-prometheus remote-write endpoint when VM is disabled.
   prometheus_remote_write_endpoint = var.victoria_metrics_enabled ? "http://vminsert-${var.vm_cluster_name}.${var.namespace}.svc.cluster.local:8480/insert/0/prometheus/api/v1/write" : "http://kube-prometheus-stack-prometheus.${var.namespace}.svc.cluster.local:9090/api/v1/write"
+  dash0_auth_token                 = var.dash0_auth_token
+  elasticsearch_endpoint           = "https://elasticsearch-master.${var.namespace}.svc.cluster.local:9200"
+  elastic_password                 = var.elastic_password
 
   # Infra metrics (opt-in)
   infra_metrics_enabled   = var.infra_metrics_enabled

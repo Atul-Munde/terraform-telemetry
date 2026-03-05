@@ -235,6 +235,43 @@ resource "kubernetes_manifest" "otel_gateway" {
             }
           }
 
+          # Dash0: OTLP gRPC with TLS + Bearer auth (traces, metrics, logs)
+          "otlp/dash0" = {
+            endpoint = var.dash0_endpoint
+            tls      = { insecure = false }
+            headers  = { Authorization = var.dash0_auth_token }
+            retry_on_failure = {
+              enabled          = true
+              initial_interval = "5s"
+              max_interval     = "30s"
+              max_elapsed_time = "300s"
+            }
+            sending_queue = {
+              enabled       = true
+              num_consumers = 4
+              queue_size    = 5000
+            }
+          }
+
+          # Elasticsearch: logs to Kibana
+          elasticsearch = {
+            endpoints = [var.elasticsearch_endpoint]
+            logs_index = "otel-logs"
+            tls       = { insecure_skip_verify = true }
+            user      = "elastic"
+            password  = var.elastic_password
+            retry = {
+              enabled          = true
+              initial_interval = "5s"
+              max_interval     = "30s"
+            }
+            sending_queue = {
+              enabled       = true
+              num_consumers = 4
+              queue_size    = 5000
+            }
+          }
+
           # Push application metrics to the configured metrics backend
           # (VictoriaMetrics vminsert, or kube-prometheus when VM is disabled).
           # WAL-backed queue means zero metric loss during backend restarts;
@@ -274,12 +311,17 @@ resource "kubernetes_manifest" "otel_gateway" {
             traces = {
               receivers  = ["otlp"]
               processors = ["memory_limiter", "filter/noise", "transform/clean-attributes", "transform/peer-service", "tail_sampling", "batch"]
-              exporters  = ["otlp/jaeger"]
+              exporters  = ["otlp/jaeger", "otlp/dash0"]
             }
             metrics = {
               receivers  = ["otlp"]
               processors = ["memory_limiter", "batch"]
-              exporters  = ["prometheusremotewrite/metrics-backend"]
+              exporters  = ["prometheusremotewrite/metrics-backend", "otlp/dash0"]
+            }
+            logs = {
+              receivers  = ["otlp"]
+              processors = ["memory_limiter", "batch"]
+              exporters  = ["otlp/dash0", "elasticsearch"]
             }
           }
           telemetry = {
