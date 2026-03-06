@@ -196,6 +196,15 @@ module "telemetry" {
   vm_backup_s3_region      = "ap-south-1"
   vm_backup_retention_days = 30
   eks_oidc_provider_arn    = var.eks_oidc_provider_arn
+
+  # MongoDB Exporter Scraping
+  mongodb_scrape_enabled          = true
+  mongodb_exporter_namespace      = "atomsphere-kl-111"
+  mongodb_exporter_service_labels = {
+    "app.kubernetes.io/component" = "metrics"
+    "app.kubernetes.io/instance"  = "intangles-mongo-gen-obs"
+  }
+  mongodb_exporter_port           = "http-metrics"
 }
 
 # ---------------------------------------------------------------------------

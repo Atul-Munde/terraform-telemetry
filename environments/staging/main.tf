@@ -260,6 +260,15 @@ module "telemetry" {
   vm_ingress_class_name = "alb"
 
   vm_backup_enabled = false
+
+  # MongoDB Exporter Scraping
+  mongodb_scrape_enabled          = true
+  mongodb_exporter_namespace      = "atomsphere-kl-111"
+  mongodb_exporter_service_labels = {
+    "app.kubernetes.io/component" = "metrics"
+    "app.kubernetes.io/instance"  = "intangles-mongo-gen-obs"
+  }
+  mongodb_exporter_port           = "http-metrics"
 }
 
 # Outputs
