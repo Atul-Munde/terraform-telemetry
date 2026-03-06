@@ -42,9 +42,9 @@ resource "kubernetes_manifest" "nodejs_instrumentation" {
 
         env = [
           {
-            # gRPC protocol matches Agent receiver port 4317
+            # http/protobuf matches the Agent HTTP receiver on port 4318
             name  = "OTEL_EXPORTER_OTLP_PROTOCOL"
-            value = "grpc"
+            value = "http/protobuf"
           },
           {
             name  = "OTEL_TRACES_EXPORTER"
