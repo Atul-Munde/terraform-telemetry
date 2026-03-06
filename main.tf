@@ -274,6 +274,12 @@ module "victoria_metrics" {
   backup_retention_days = var.vm_backup_retention_days
   eks_oidc_provider_arn = var.eks_oidc_provider_arn
 
+  # MongoDB exporter scraping
+  mongodb_scrape_enabled          = var.mongodb_scrape_enabled
+  mongodb_exporter_namespace      = var.mongodb_exporter_namespace
+  mongodb_exporter_service_labels = var.mongodb_exporter_service_labels
+  mongodb_exporter_port           = var.mongodb_exporter_port
+
   # Node placement (shared with other modules)
   node_selector = var.node_selector
   tolerations   = var.tolerations

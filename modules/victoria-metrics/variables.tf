@@ -356,3 +356,30 @@ variable "eks_oidc_provider_arn" {
   type        = string
   default     = ""
 }
+
+# ---------------------------------------------------------------------------
+# MongoDB Exporter Scraping
+# ---------------------------------------------------------------------------
+variable "mongodb_scrape_enabled" {
+  description = "Enable VMServiceScrape to scrape the bitnami-mongodb-exporter sidecar via VMAgent"
+  type        = bool
+  default     = false
+}
+
+variable "mongodb_exporter_namespace" {
+  description = "Namespace where the mongodb-exporter Service is running (e.g. atomsphere-kl-111)"
+  type        = string
+  default     = ""
+}
+
+variable "mongodb_exporter_service_labels" {
+  description = "matchLabels selector to identify the mongodb-exporter Kubernetes Service"
+  type        = map(string)
+  default     = {}
+}
+
+variable "mongodb_exporter_port" {
+  description = "Named port on the mongodb-exporter Service that exposes /metrics (bitnami chart default: http-metrics)"
+  type        = string
+  default     = "http-metrics"
+}
