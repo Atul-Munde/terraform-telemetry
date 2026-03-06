@@ -126,6 +126,17 @@ resource "kubernetes_config_map" "otel_collector" {
           }
         }
 
+        # OTLP exporter for Dash0
+        "otlp/dash0" = {
+          endpoint = "ingress.us-west-2.aws.dash0.com:4317"
+          tls = {
+            insecure = false
+          }
+          headers = {
+            Authorization = "Bearer auth_uPbyf1XkiclCTALKB7YsniymdTBcUAXB"
+          }
+        }
+
         # Logging exporter for debugging
         logging = {
           loglevel            = "info"
@@ -163,12 +174,17 @@ resource "kubernetes_config_map" "otel_collector" {
               "resource",
               "batch"
             ]
-            exporters = ["otlp", "logging"]
+            exporters = ["otlp", "otlp/dash0", "logging"]
           }
           metrics = {
             receivers  = ["otlp", "prometheus"]
             processors = ["memory_limiter", "batch"]
-            exporters  = ["logging"]
+            exporters  = ["otlp/dash0", "logging"]
+          }
+          logs = {
+            receivers  = ["otlp"]
+            processors = ["memory_limiter", "batch"]
+            exporters  = ["otlp/dash0", "logging"]
           }
         }
         telemetry = {
