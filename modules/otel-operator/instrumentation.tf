@@ -22,7 +22,7 @@ resource "kubernetes_manifest" "nodejs_instrumentation" {
     spec = {
       # Send to Agent on local node (low latency, no cross-node hop)
       exporter = {
-        endpoint = "http://otel-agent-collector.${var.namespace}.svc.cluster.local:4318"
+        endpoint = "http://otel-agent-collector.${var.namespace}.svc.cluster.local:4317"
       }
 
       # W3C TraceContext + Baggage — mandatory for cross-service context propagation
@@ -42,9 +42,9 @@ resource "kubernetes_manifest" "nodejs_instrumentation" {
 
         env = [
           {
-            # http/protobuf matches the Agent HTTP receiver on port 4318
+            # gRPC matches the Agent gRPC receiver on port 4317
             name  = "OTEL_EXPORTER_OTLP_PROTOCOL"
-            value = "http/protobuf"
+            value = "grpc"
           },
           {
             name  = "OTEL_TRACES_EXPORTER"
