@@ -18,6 +18,10 @@ terraform {
       source  = "gavinbunney/kubectl"
       version = "~> 1.14"
     }
+    elasticstack = {
+      source  = "elastic/elasticstack"
+      version = ">= 0.11"
+    }
   }
 
   backend "s3" {
@@ -49,6 +53,15 @@ provider "kubectl" {
   config_path = "~/.kube/config"
 }
 
+provider "elasticstack" {
+  elasticsearch {
+    endpoints = [var.elasticsearch_endpoint != "" ? var.elasticsearch_endpoint : "https://elasticsearch-master.telemetry.svc.cluster.local:9200"]
+    username  = "elastic"
+    password  = var.elastic_password
+    insecure  = true
+  }
+}
+
 # ---------------------------------------------------------------------------
 # Secret variables — must be supplied via TF_VAR_* env vars
 # ---------------------------------------------------------------------------
@@ -56,6 +69,12 @@ variable "elastic_password" {
   description = "Elasticsearch elastic user password"
   type        = string
   sensitive   = true
+  default     = ""
+}
+
+variable "elasticsearch_endpoint" {
+  description = "External Elasticsearch endpoint for ILM management. If empty, uses in-cluster DNS."
+  type        = string
   default     = ""
 }
 
@@ -152,6 +171,11 @@ module "telemetry" {
   elasticsearch_replicas      = 2
   elasticsearch_storage_size  = "75Gi"
   elasticsearch_storage_class = "gp3"
+  custom_ilm_policies = {
+    "jaeger-span"    = 8
+    "jaeger-service" = 8
+    "otel-logs"      = 8
+  }
   elasticsearch_resources = {
     requests = {
       cpu    = "1000m"

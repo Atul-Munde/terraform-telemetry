@@ -10,5 +10,9 @@ terraform {
       source  = "hashicorp/helm"
       version = ">= 2.12"
     }
+    elasticstack = {
+      source  = "elastic/elasticstack"
+      version = ">= 0.11"
+    }
   }
 }
