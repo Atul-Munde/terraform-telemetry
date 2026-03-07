@@ -418,6 +418,18 @@ variable "data_retention_days" {
   default     = 7
 }
 
+variable "elasticsearch_endpoint" {
+  description = "External Elasticsearch endpoint for ILM management. If empty, uses in-cluster DNS. Example: https://localhost:9200"
+  type        = string
+  default     = ""
+}
+
+variable "custom_ilm_policies" {
+  description = "Map of index prefix to retention days for custom ILM policies. Example: { \"jaeger-span\" = 14, \"application-logs\" = 30 }"
+  type        = map(number)
+  default     = {}
+}
+
 variable "labels" {
   description = "Common labels to apply to all resources"
   type        = map(string)

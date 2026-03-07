@@ -85,3 +85,18 @@ variable "elastic_password" {
   sensitive   = true
   default     = ""
 }
+
+# ---------------------------------------------------------------------------
+# ILM (Index Lifecycle Management)
+# ---------------------------------------------------------------------------
+variable "elasticsearch_endpoint" {
+  description = "External Elasticsearch endpoint for ILM management. If empty, uses in-cluster DNS. Example: https://localhost:9200"
+  type        = string
+  default     = ""
+}
+
+variable "custom_ilm_policies" {
+  description = "Map of index prefix to retention days for custom ILM policies. Example: { \"jaeger-span\" = 14, \"application-logs\" = 30 }"
+  type        = map(number)
+  default     = {}
+}

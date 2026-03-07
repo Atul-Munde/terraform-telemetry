@@ -39,16 +39,18 @@ module "elasticsearch" {
   source = "./modules/elasticsearch"
   count  = var.elasticsearch_enabled ? 1 : 0
 
-  namespace      = module.namespace.name
-  environment    = var.environment
-  replicas       = var.elasticsearch_replicas
-  storage_size   = var.elasticsearch_storage_size
-  storage_class  = var.elasticsearch_storage_class
-  resources      = var.elasticsearch_resources
-  retention_days = var.data_retention_days
-  node_selector  = var.node_selector
-  tolerations    = var.tolerations
-  elastic_password = var.elastic_password
+  namespace           = module.namespace.name
+  environment         = var.environment
+  replicas            = var.elasticsearch_replicas
+  storage_size        = var.elasticsearch_storage_size
+  storage_class       = var.elasticsearch_storage_class
+  resources           = var.elasticsearch_resources
+  retention_days      = var.data_retention_days
+  node_selector       = var.node_selector
+  tolerations         = var.tolerations
+  elastic_password    = var.elastic_password
+  custom_ilm_policies    = var.custom_ilm_policies
+  elasticsearch_endpoint = var.elasticsearch_endpoint
 
   depends_on = [module.namespace]
 }

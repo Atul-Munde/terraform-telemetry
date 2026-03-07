@@ -4,6 +4,7 @@ locals {
   memory_limit_mb = tonumber(regex("([0-9]+)", var.resources.limits.memory)[0]) * (can(regex("Gi", var.resources.limits.memory)) ? 1024 : 1)
   heap_size_mb    = floor(local.memory_limit_mb * 0.5)
   heap_size       = "${local.heap_size_mb}m"
+
 }
 
 # Elasticsearch credentials secret — password never stored in Helm values or tfvars
@@ -58,66 +59,82 @@ resource "helm_release" "elasticsearch" {
   depends_on = [kubernetes_secret.elasticsearch_credentials]
 }
 
-# CronJob for index cleanup — deletes indices older than retention_days
-resource "kubernetes_cron_job_v1" "index_cleanup" {
-  metadata {
-    name      = "elasticsearch-index-cleanup"
-    namespace = var.namespace
-    labels = {
-      app       = "elasticsearch"
-      component = "cleanup"
+# =============================================================================
+# ILM Policies
+# =============================================================================
+
+# Global ILM policy — hot for retention_days, then delete
+resource "elasticstack_elasticsearch_index_lifecycle" "global" {
+  name = "telemetry-global-${var.retention_days}d"
+
+  hot {
+    min_age = "0ms"
+    set_priority {
+      priority = 100
     }
   }
 
-  spec {
-    schedule = "0 2 * * *" # Run at 2 AM daily
-
-    job_template {
-      metadata {
-        labels = {
-          app       = "elasticsearch"
-          component = "cleanup"
-        }
-      }
-
-      spec {
-        template {
-          metadata {
-            labels = {
-              app       = "elasticsearch"
-              component = "cleanup"
-            }
-          }
-
-          spec {
-            restart_policy = "OnFailure"
-
-            container {
-              name  = "cleanup"
-              image = "curlimages/curl:8.5.0"
-
-              command = [
-                "/bin/sh",
-                "-c",
-                <<-EOT
-                  ES_URL="${var.elastic_password != "" ? "https" : "http"}://elasticsearch-master.${var.namespace}.svc.cluster.local:9200"
-                  AUTH="${var.elastic_password != "" ? "-u elastic:${var.elastic_password} --insecure" : ""}"
-                  echo "Deleting indices older than ${var.retention_days} days..."
-                  curl -s $AUTH -X DELETE "$ES_URL/*-*$(date -d "-${var.retention_days} days" +%Y.%m.%d 2>/dev/null || date -v-${var.retention_days}d +%Y.%m.%d)*" || true
-                  curl -s $AUTH -X DELETE "$ES_URL/jaeger-span-*" --data '{"query":{"range":{"startTimeMillis":{"lt":"now-${var.retention_days}d"}}}}' -H 'Content-Type: application/json' || true
-                  echo "Cleanup complete."
-                EOT
-              ]
-            }
-          }
-        }
-      }
-    }
-
-    concurrency_policy            = "Forbid"
-    successful_jobs_history_limit = 3
-    failed_jobs_history_limit     = 3
+  delete {
+    min_age = "${var.retention_days}d"
+    delete {}
   }
 
   depends_on = [helm_release.elasticsearch]
+}
+
+# Custom ILM policies — per-index overrides with longer retention
+resource "elasticstack_elasticsearch_index_lifecycle" "custom" {
+  for_each = var.custom_ilm_policies
+
+  name = "telemetry-${each.key}-${each.value}d"
+
+  hot {
+    min_age = "0ms"
+    set_priority {
+      priority = 100
+    }
+  }
+
+  delete {
+    min_age = "${each.value}d"
+    delete {}
+  }
+
+  depends_on = [helm_release.elasticsearch]
+}
+
+# =============================================================================
+# Index Templates — attach ILM policies to index patterns
+# =============================================================================
+
+# Global index template — matches all indices, lowest priority
+resource "elasticstack_elasticsearch_index_template" "global" {
+  name           = "telemetry-global-ilm"
+  index_patterns = ["*"]
+  priority       = 99
+
+  template {
+    settings = jsonencode({
+      "index.lifecycle.name" = elasticstack_elasticsearch_index_lifecycle.global.name
+    })
+  }
+
+  depends_on = [elasticstack_elasticsearch_index_lifecycle.global]
+}
+
+# Custom index templates — higher priority, override global for specific indices
+resource "elasticstack_elasticsearch_index_template" "custom" {
+  for_each = var.custom_ilm_policies
+
+  name           = "telemetry-${each.key}-ilm"
+  index_patterns = ["${each.key}-*", "${each.key}*"]
+  priority       = 200
+
+  template {
+    settings = jsonencode({
+      "index.lifecycle.name" = elasticstack_elasticsearch_index_lifecycle.custom[each.key].name
+    })
+  }
+
+  depends_on = [elasticstack_elasticsearch_index_lifecycle.custom]
 }
