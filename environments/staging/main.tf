@@ -275,9 +275,10 @@ module "telemetry" {
   vmselect_min_replicas = 3
   vmselect_max_replicas = 6
 
-  vmagent_enabled = true
-  vmalert_enabled = false
-  vmauth_enabled  = false
+  vmagent_enabled  = true
+  vmalert_enabled  = true
+  alertmanager_url = "http://kube-prometheus-stack-alertmanager.telemetry.svc.cluster.local:9093"
+  vmauth_enabled   = false
 
   vm_create_ingress     = true
   vmselect_ingress_host = "vm.test.intangles.com"
