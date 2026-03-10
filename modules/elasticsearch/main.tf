@@ -60,81 +60,127 @@ resource "helm_release" "elasticsearch" {
 }
 
 # =============================================================================
-# ILM Policies
+# ILM Policies & Index Templates — applied via Kubernetes Job (no elasticstack provider)
+# The Job runs after ES is ready, creates ILM policies and index templates via curl.
 # =============================================================================
 
-# Global ILM policy — hot for retention_days, then delete
-resource "elasticstack_elasticsearch_index_lifecycle" "global" {
-  name = "telemetry-global-${var.retention_days}d"
+locals {
+  es_url = "https://elasticsearch-master.${var.namespace}.svc.cluster.local:9200"
 
-  hot {
-    min_age = "0ms"
-    set_priority {
-      priority = 100
+  # Build curl commands for custom ILM policies
+  custom_ilm_commands = join("\n\n", [
+    for prefix, days in var.custom_ilm_policies : <<-EOT
+    # Custom ILM policy — ${prefix} ${days} days
+    curl -sk -u "elastic:$PASSWORD" -X PUT \
+      "https://elasticsearch-master:9200/_ilm/policy/telemetry-${prefix}-${days}d" \
+      -H 'Content-Type: application/json' -d '{
+        "policy": {
+          "phases": {
+            "hot":    { "min_age": "0ms", "actions": { "set_priority": { "priority": 100 } } },
+            "delete": { "min_age": "${days}d",  "actions": { "delete": {} } }
+          }
+        }
+      }'
+    EOT
+  ])
+
+  # Build curl commands for custom index templates
+  custom_template_commands = join("\n\n", [
+    for prefix, days in var.custom_ilm_policies : <<-EOT
+    # Custom index template — priority 200, overrides global for ${prefix}-*
+    curl -sk -u "elastic:$PASSWORD" -X PUT \
+      "https://elasticsearch-master:9200/_index_template/telemetry-${prefix}-ilm" \
+      -H 'Content-Type: application/json' -d '{
+        "index_patterns": ["${prefix}-*", "${prefix}*"],
+        "priority": 200,
+        "template": {
+          "settings": { "index.lifecycle.name": "telemetry-${prefix}-${days}d" }
+        }
+      }'
+    EOT
+  ])
+}
+
+resource "kubernetes_job_v1" "elasticsearch_ilm_setup" {
+  metadata {
+    name      = "elasticsearch-ilm-setup"
+    namespace = var.namespace
+    labels = {
+      "app.kubernetes.io/name"       = "elasticsearch-ilm-setup"
+      "app.kubernetes.io/component"  = "ilm"
+      "app.kubernetes.io/managed-by" = "terraform"
     }
   }
 
-  delete {
-    min_age = "${var.retention_days}d"
-    delete {}
-  }
+  spec {
+    backoff_limit = 5
 
-  depends_on = [helm_release.elasticsearch]
-}
+    template {
+      metadata {
+        labels = {
+          "app.kubernetes.io/name"      = "elasticsearch-ilm-setup"
+          "app.kubernetes.io/component" = "ilm"
+        }
+      }
 
-# Custom ILM policies — per-index overrides with longer retention
-resource "elasticstack_elasticsearch_index_lifecycle" "custom" {
-  for_each = var.custom_ilm_policies
+      spec {
+        restart_policy = "OnFailure"
 
-  name = "telemetry-${each.key}-${each.value}d"
+        container {
+          name  = "ilm-setup"
+          image = "curlimages/curl:latest"
 
-  hot {
-    min_age = "0ms"
-    set_priority {
-      priority = 100
+          env {
+            name = "PASSWORD"
+            value_from {
+              secret_key_ref {
+                name = "elasticsearch-credentials"
+                key  = "ELASTIC_PASSWORD"
+              }
+            }
+          }
+
+          command = ["/bin/sh", "-c"]
+          args = [<<-EOF
+            # Wait for ES to be ready
+            until curl -sk -u "elastic:$PASSWORD" https://elasticsearch-master:9200/_cluster/health; do
+              sleep 5
+            done
+
+            # Global ILM policy — ${var.retention_days} day retention
+            curl -sk -u "elastic:$PASSWORD" -X PUT \
+              "https://elasticsearch-master:9200/_ilm/policy/telemetry-global-${var.retention_days}d" \
+              -H 'Content-Type: application/json' -d '{
+                "policy": {
+                  "phases": {
+                    "hot":    { "min_age": "0ms", "actions": { "set_priority": { "priority": 100 } } },
+                    "delete": { "min_age": "${var.retention_days}d",  "actions": { "delete": {} } }
+                  }
+                }
+              }'
+
+            ${local.custom_ilm_commands}
+
+            # Global index template — priority 99, applies to all indices
+            curl -sk -u "elastic:$PASSWORD" -X PUT \
+              "https://elasticsearch-master:9200/_index_template/telemetry-global-ilm" \
+              -H 'Content-Type: application/json' -d '{
+                "index_patterns": ["*"],
+                "priority": 99,
+                "template": {
+                  "settings": { "index.lifecycle.name": "telemetry-global-${var.retention_days}d" }
+                }
+              }'
+
+            ${local.custom_template_commands}
+          EOF
+          ]
+        }
+      }
     }
   }
 
-  delete {
-    min_age = "${each.value}d"
-    delete {}
-  }
+  wait_for_completion = false
 
   depends_on = [helm_release.elasticsearch]
-}
-
-# =============================================================================
-# Index Templates — attach ILM policies to index patterns
-# =============================================================================
-
-# Global index template — matches all indices, lowest priority
-resource "elasticstack_elasticsearch_index_template" "global" {
-  name           = "telemetry-global-ilm"
-  index_patterns = ["*"]
-  priority       = 99
-
-  template {
-    settings = jsonencode({
-      "index.lifecycle.name" = elasticstack_elasticsearch_index_lifecycle.global.name
-    })
-  }
-
-  depends_on = [elasticstack_elasticsearch_index_lifecycle.global]
-}
-
-# Custom index templates — higher priority, override global for specific indices
-resource "elasticstack_elasticsearch_index_template" "custom" {
-  for_each = var.custom_ilm_policies
-
-  name           = "telemetry-${each.key}-ilm"
-  index_patterns = ["${each.key}-*", "${each.key}*"]
-  priority       = 200
-
-  template {
-    settings = jsonencode({
-      "index.lifecycle.name" = elasticstack_elasticsearch_index_lifecycle.custom[each.key].name
-    })
-  }
-
-  depends_on = [elasticstack_elasticsearch_index_lifecycle.custom]
 }

@@ -50,7 +50,6 @@ module "elasticsearch" {
   tolerations         = var.tolerations
   elastic_password    = var.elastic_password
   custom_ilm_policies    = var.custom_ilm_policies
-  elasticsearch_endpoint = var.elasticsearch_endpoint
 
   depends_on = [module.namespace]
 }
