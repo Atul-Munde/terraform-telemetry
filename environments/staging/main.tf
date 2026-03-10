@@ -27,7 +27,7 @@ terraform {
     region         = "ap-south-1"
     dynamodb_table = "terraform-state-lock"
     encrypt        = true
-    profile        = "mum-test"
+    profile        = "ITM"
   }
 }
 
@@ -43,7 +43,7 @@ provider "helm" {
 
 provider "aws" {
   region  = "ap-south-1"
-  profile = "mum-test"
+  profile = "ITM"
 }
 
 provider "kubectl" {
@@ -154,7 +154,7 @@ module "telemetry" {
   elasticsearch_storage_size  = "75Gi"
   elasticsearch_storage_class = "gp3"
   custom_ilm_policies = {
-    "jaeger-span"    = 5
+    "jaeger-span"    = 3
     "jaeger-service" = 9
   }
   elasticsearch_resources = {
