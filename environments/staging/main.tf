@@ -268,11 +268,13 @@ module "telemetry" {
   vm_backup_enabled = false
 
   # MongoDB Exporter Scraping
+  # namespace left empty → VMAgent discovers mongodb-exporter services in ALL namespaces.
+  # Labels use only the two constants shared by every MongoDB cluster.
   mongodb_scrape_enabled          = true
-  mongodb_exporter_namespace      = "atomsphere-kl-111"
+  mongodb_exporter_namespace      = ""
   mongodb_exporter_service_labels = {
     "app.kubernetes.io/component" = "metrics"
-    "app.kubernetes.io/instance"  = "intangles-mongo-gen-obs"
+    "app.kubernetes.io/name"      = "mongodb"
   }
   mongodb_exporter_port           = "http-metrics"
 }

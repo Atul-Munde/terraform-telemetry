@@ -367,13 +367,13 @@ variable "mongodb_scrape_enabled" {
 }
 
 variable "mongodb_exporter_namespace" {
-  description = "Namespace where the mongodb-exporter Service is running (e.g. atomsphere-kl-111)"
+  description = "Namespace to restrict MongoDB scraping to. Leave empty (\"\") to scrape mongodb-exporter services across ALL namespaces (recommended when multiple MongoDB clusters exist in different namespaces)."
   type        = string
   default     = ""
 }
 
 variable "mongodb_exporter_service_labels" {
-  description = "matchLabels selector to identify the mongodb-exporter Kubernetes Service"
+  description = "matchLabels selector to identify mongodb-exporter Kubernetes Services. Use only labels that are constant across ALL MongoDB clusters (e.g. app.kubernetes.io/component + app.kubernetes.io/name). Avoid instance-specific labels like app.kubernetes.io/instance."
   type        = map(string)
   default     = {}
 }
