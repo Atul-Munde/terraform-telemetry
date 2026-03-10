@@ -262,6 +262,13 @@ resource "kubectl_manifest" "vmsscrape_otel_gateway" {
   force_conflicts   = true
   server_side_apply = true
 
+  lifecycle {
+    # yaml_incluster is a computed sensitive field that the kubectl provider
+    # re-derives from the live cluster on every plan (server-side apply merge).
+    # It changes constantly even when the actual spec is unchanged — suppress it.
+    ignore_changes = [yaml_incluster]
+  }
+
   yaml_body = yamlencode({
     apiVersion = "operator.victoriametrics.com/v1beta1"
     kind       = "VMServiceScrape"
