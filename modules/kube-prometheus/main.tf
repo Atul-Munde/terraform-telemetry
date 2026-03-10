@@ -25,24 +25,30 @@ locals {
 }
 
 # Storage Classes
-resource "kubernetes_storage_class_v1" "prometheus" {
-  count = var.create_storage_classes ? 1 : 0
 
-  metadata {
-    name = var.prometheus_storage_class
-  }
-  storage_provisioner = var.storage_provisioner
-  parameters = {
-    type   = "gp3"
-    fsType = "xfs"
-  }
-  reclaim_policy         = "Retain"
-  allow_volume_expansion = true
-
-  lifecycle {
-    ignore_changes = [parameters]
-  }
-}
+# ---------------------------------------------------------------------------
+# Prometheus Storage Class — DISABLED
+# Prometheus is replaced by VictoriaMetrics. The storage class is no longer
+# needed. Uncomment this block if Prometheus is re-enabled.
+# ---------------------------------------------------------------------------
+# resource "kubernetes_storage_class_v1" "prometheus" {
+#   count = var.create_storage_classes ? 1 : 0
+#
+#   metadata {
+#     name = var.prometheus_storage_class
+#   }
+#   storage_provisioner = var.storage_provisioner
+#   parameters = {
+#     type   = "gp3"
+#     fsType = "xfs"
+#   }
+#   reclaim_policy         = "Retain"
+#   allow_volume_expansion = true
+#
+#   lifecycle {
+#     ignore_changes = [parameters]
+#   }
+# }
 
 resource "kubernetes_storage_class_v1" "alertmanager" {
   count = var.create_storage_classes ? 1 : 0
@@ -180,14 +186,17 @@ resource "helm_release" "kube_prometheus_stack" {
 
   depends_on = [
     null_resource.clear_helm_pending_upgrade,
-    kubernetes_storage_class_v1.prometheus,
+    # kubernetes_storage_class_v1.prometheus,  # DISABLED — Prometheus replaced by VictoriaMetrics
     kubernetes_storage_class_v1.alertmanager,
     kubernetes_storage_class_v1.grafana,
   ]
 }
 
 # ---------------------------------------------------------------------------
-# ALB Ingress — Prometheus (optional)
+# ALB Ingress — Prometheus (optional) — DISABLED
+# Prometheus is replaced by VictoriaMetrics. This ingress is kept for
+# potential re-enablement but effectively never created since
+# create_ingress_prometheus defaults to false.
 # ---------------------------------------------------------------------------
 resource "kubernetes_ingress_v1" "prometheus" {
   count = var.create_ingress_prometheus ? 1 : 0

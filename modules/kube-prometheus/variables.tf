@@ -50,7 +50,12 @@ variable "create_storage_classes" {
   default     = true
 }
 
-# Prometheus Configuration
+# ---------------------------------------------------------------------------
+# Prometheus Configuration — DISABLED
+# Prometheus is replaced by VictoriaMetrics. These variables are retained
+# so that the templatefile() call in main.tf continues to compile and
+# can be re-enabled without structural changes.
+# ---------------------------------------------------------------------------
 variable "prometheus_replicas" {
   description = "Number of Prometheus replicas"
   type        = number
@@ -99,7 +104,9 @@ variable "prometheus_resources" {
   }
 }
 
-# Alertmanager Configuration
+# ---------------------------------------------------------------------------
+# Alertmanager Configuration — ACTIVE (deployed via kube-prometheus-stack)
+# ---------------------------------------------------------------------------
 variable "alertmanager_replicas" {
   description = "Number of Alertmanager replicas"
   type        = number
@@ -142,7 +149,9 @@ variable "alertmanager_resources" {
   }
 }
 
-# Grafana Configuration
+# ---------------------------------------------------------------------------
+# Grafana Configuration — ACTIVE (deployed via kube-prometheus-stack)
+# ---------------------------------------------------------------------------
 variable "grafana_replicas" {
   description = "Number of Grafana replicas"
   type        = number
@@ -191,7 +200,12 @@ variable "grafana_resources" {
   }
 }
 
-# Node Exporter Configuration
+# ---------------------------------------------------------------------------
+# Node Exporter Configuration — ACTIVE
+# node-exporter is kept enabled even without Prometheus.
+# VMAgent auto-discovers its ServiceMonitor and scrapes node metrics
+# (CPU/memory/disk/network) which flow directly into VictoriaMetrics.
+# ---------------------------------------------------------------------------
 variable "node_exporter_port" {
   description = "Port for node-exporter to expose metrics (change if default 9100 conflicts with existing installation)"
   type        = number

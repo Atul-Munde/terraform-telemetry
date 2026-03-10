@@ -5,58 +5,63 @@
 defaultRules:
   create: ${default_rules_enabled}
 
-# Prometheus configuration
+# ---------------------------------------------------------------------------
+# Prometheus — DISABLED
+# Metric storage is handled by VictoriaMetrics (vminsert/vmselect/vmstorage).
+# VMAgent scrapes all targets and remote-writes into VictoriaMetrics.
+# To re-enable: set enabled: true and uncomment prometheusSpec below.
+# ---------------------------------------------------------------------------
 prometheus:
-  enabled: true
-  prometheusSpec:
-    replicas: ${prometheus_replicas}
-    retention: ${prometheus_retention}
-    nodeSelector:
-      ${node_selector_key}: "${node_selector_value}"
-    affinity:
-      podAntiAffinity:
-        requiredDuringSchedulingIgnoredDuringExecution:
-          - labelSelector:
-              matchLabels:
-                app.kubernetes.io/name: prometheus
-            topologyKey: kubernetes.io/hostname
-    topologySpreadConstraints:
-      - maxSkew: 1
-        topologyKey: topology.kubernetes.io/zone
-        whenUnsatisfiable: ScheduleAnyway
-        labelSelector:
-          matchLabels:
-            app.kubernetes.io/name: prometheus
-    resources:
-      requests:
-        cpu: "${prometheus_resources_requests_cpu}"
-        memory: "${prometheus_resources_requests_memory}"
-      limits:
-        cpu: "${prometheus_resources_limits_cpu}"
-        memory: "${prometheus_resources_limits_memory}"
-    storageSpec:
-      volumeClaimTemplate:
-        spec:
-          storageClassName: ${prometheus_storage_class}
-          accessModes:
-            - ReadWriteOnce
-          resources:
-            requests:
-              storage: ${prometheus_storage}
-    # Increase startup probe to handle long WAL replay times
-    startupProbe:
-      httpGet:
-        path: /-/ready
-        port: 9090
-        scheme: HTTP
-      initialDelaySeconds: 0
-      periodSeconds: 15
-      timeoutSeconds: 5
-      successThreshold: 1
-      failureThreshold: 120  # 120 * 15 = 30 minutes max startup time
-    podDisruptionBudget:
-      enabled: true
-      minAvailable: 1
+  enabled: false
+  # prometheusSpec:
+  #   replicas: ${prometheus_replicas}
+  #   retention: ${prometheus_retention}
+  #   nodeSelector:
+  #     ${node_selector_key}: "${node_selector_value}"
+  #   affinity:
+  #     podAntiAffinity:
+  #       requiredDuringSchedulingIgnoredDuringExecution:
+  #         - labelSelector:
+  #             matchLabels:
+  #               app.kubernetes.io/name: prometheus
+  #           topologyKey: kubernetes.io/hostname
+  #   topologySpreadConstraints:
+  #     - maxSkew: 1
+  #       topologyKey: topology.kubernetes.io/zone
+  #       whenUnsatisfiable: ScheduleAnyway
+  #       labelSelector:
+  #         matchLabels:
+  #           app.kubernetes.io/name: prometheus
+  #   resources:
+  #     requests:
+  #       cpu: "${prometheus_resources_requests_cpu}"
+  #       memory: "${prometheus_resources_requests_memory}"
+  #     limits:
+  #       cpu: "${prometheus_resources_limits_cpu}"
+  #       memory: "${prometheus_resources_limits_memory}"
+  #   storageSpec:
+  #     volumeClaimTemplate:
+  #       spec:
+  #         storageClassName: ${prometheus_storage_class}
+  #         accessModes:
+  #           - ReadWriteOnce
+  #         resources:
+  #           requests:
+  #             storage: ${prometheus_storage}
+  #   # Increase startup probe to handle long WAL replay times
+  #   startupProbe:
+  #     httpGet:
+  #       path: /-/ready
+  #       port: 9090
+  #       scheme: HTTP
+  #     initialDelaySeconds: 0
+  #     periodSeconds: 15
+  #     timeoutSeconds: 5
+  #     successThreshold: 1
+  #     failureThreshold: 120  # 120 * 15 = 30 minutes max startup time
+  #   podDisruptionBudget:
+  #     enabled: true
+  #     minAvailable: 1
 
 # Alertmanager configuration
 alertmanager:
@@ -186,7 +191,14 @@ kube-state-metrics:
   nodeSelector:
     ${node_selector_key}: "${node_selector_value}"
 
-# Node exporter - runs on all nodes
+# ---------------------------------------------------------------------------
+# Node exporter — KEEP ENABLED even without Prometheus.
+# VMAgent (selectAllByDefault: true) auto-discovers the kube-prometheus
+# ServiceMonitor for node-exporter and scrapes CPU/memory/disk/network
+# metrics from every node. Those metrics flow: node-exporter → VMAgent
+# → VictoriaMetrics → Grafana dashboards.
+# Removing this would eliminate all node-level hardware metrics.
+# ---------------------------------------------------------------------------
 prometheus-node-exporter:
   nodeSelector:
     kubernetes.io/os: linux

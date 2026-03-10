@@ -20,20 +20,24 @@ output "grafana_service" {
   value       = "${helm_release.kube_prometheus_stack.name}-grafana"
 }
 
-output "prometheus_service" {
-  description = "Prometheus service name"
-  value       = "${helm_release.kube_prometheus_stack.name}-prometheus"
-}
+# ---------------------------------------------------------------------------
+# Prometheus outputs — DISABLED (Prometheus replaced by VictoriaMetrics)
+# Uncomment if Prometheus is re-enabled.
+# ---------------------------------------------------------------------------
+# output "prometheus_service" {
+#   description = "Prometheus service name"
+#   value       = "${helm_release.kube_prometheus_stack.name}-prometheus"
+# }
 
 output "alertmanager_service" {
   description = "Alertmanager service name"
   value       = "${helm_release.kube_prometheus_stack.name}-alertmanager"
 }
 
-output "prometheus_url" {
-  description = "Prometheus endpoint (public URL if ingress enabled, internal URL otherwise)"
-  value       = var.create_ingress_prometheus ? "https://${var.prometheus_ingress_host}" : "http://${helm_release.kube_prometheus_stack.name}-prometheus.${var.namespace}.svc.cluster.local:9090"
-}
+# output "prometheus_url" {
+#   description = "Prometheus endpoint — DISABLED (Prometheus replaced by VictoriaMetrics)"
+#   value       = var.create_ingress_prometheus ? "https://${var.prometheus_ingress_host}" : "http://${helm_release.kube_prometheus_stack.name}-prometheus.${var.namespace}.svc.cluster.local:9090"
+# }
 
 output "grafana_url" {
   description = "Grafana endpoint (public URL if ingress enabled, internal URL otherwise)"

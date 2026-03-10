@@ -306,9 +306,10 @@ output "kibana_url" {
   value = module.telemetry.kibana_url
 }
 
-output "prometheus_url" {
-  value = module.telemetry.prometheus_url
-}
+# output "prometheus_url" {
+#   # DISABLED — Prometheus replaced by VictoriaMetrics
+#   # value = module.telemetry.prometheus_url
+# }
 
 output "grafana_url" {
   value = module.telemetry.grafana_url
