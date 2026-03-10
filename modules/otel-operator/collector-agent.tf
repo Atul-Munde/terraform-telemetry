@@ -245,7 +245,7 @@ resource "kubernetes_manifest" "otel_agent" {
               exporters  = ["otlp/gateway"]
             }
             logs = {
-              receivers  = ["filelog"]
+              receivers  = ["otlp", "filelog"]
               processors = ["memory_limiter", "resourcedetection/eks", "k8sattributes", "resource", "batch"]
               exporters  = ["otlp/gateway"]
             }
