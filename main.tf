@@ -281,6 +281,12 @@ module "victoria_metrics" {
   mongodb_exporter_service_labels = var.mongodb_exporter_service_labels
   mongodb_exporter_port           = var.mongodb_exporter_port
 
+  # PostgreSQL / TimescaleDB exporter scraping
+  postgres_scrape_enabled      = var.postgres_scrape_enabled
+  postgres_exporter_namespace  = var.postgres_exporter_namespace
+  postgres_exporter_label_key  = var.postgres_exporter_label_key
+  postgres_exporter_port       = var.postgres_exporter_port
+
   # Node placement (shared with other modules)
   node_selector = var.node_selector
   tolerations   = var.tolerations

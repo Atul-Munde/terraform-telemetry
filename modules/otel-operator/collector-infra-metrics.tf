@@ -6,6 +6,19 @@
 resource "kubernetes_manifest" "otel_infra_metrics" {
   count = var.infra_metrics_enabled ? 1 : 0
 
+  field_manager {
+    force_conflicts = true
+  }
+
+  # computed_fields: suppress perpetual toleration drift caused by the OTel Operator
+  # and Kubernetes injecting server-side fields after resource creation.
+  computed_fields = [
+    "metadata.labels",
+    "metadata.annotations",
+    "metadata.finalizers",
+    "spec.tolerations",
+  ]
+
   manifest = {
     apiVersion = "opentelemetry.io/v1beta1"
     kind       = "OpenTelemetryCollector"

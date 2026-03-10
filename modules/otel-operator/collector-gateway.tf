@@ -16,6 +16,18 @@ resource "kubernetes_manifest" "otel_gateway" {
     force_conflicts = true
   }
 
+  # computed_fields: paths that are managed/injected by the server after creation.
+  # Without this, the kubernetes_manifest provider reads the full live object and
+  # detects a perpetual diff for fields it didn't set (tolerations injected by the
+  # OTel Operator reconciler). computed_fields tells the provider to treat these
+  # paths as server-owned and exclude them from plan diffs.
+  computed_fields = [
+    "metadata.labels",
+    "metadata.annotations",
+    "metadata.finalizers",
+    "spec.tolerations",
+  ]
+
   manifest = {
     apiVersion = "opentelemetry.io/v1beta1"
     kind       = "OpenTelemetryCollector"
@@ -28,7 +40,7 @@ resource "kubernetes_manifest" "otel_gateway" {
       })
     }
 
-    spec = {
+    spec = merge({
       # StatefulSet: mandatory for tail sampling with multiple replicas
       mode     = "statefulset"
       replicas = var.gateway_min_replicas
@@ -37,17 +49,9 @@ resource "kubernetes_manifest" "otel_gateway" {
       image          = "${var.gateway_image}:${var.gateway_image_tag}"
 
       nodeSelector = var.node_selector
-
-      # null when empty: Kubernetes API stores absent tolerations as null, not [].
-      # Returning [] would cause a provider inconsistency error on every apply.
-      tolerations = length(var.tolerations) > 0 ? [
-        for t in var.tolerations : {
-          key      = t.key
-          operator = t.operator
-          value    = t.value
-          effect   = t.effect
-        }
-      ] : null
+      # tolerations are conditionally merged below — omitting the key entirely
+      # when empty so computed_fields = ["spec.tolerations"] can suppress
+      # the OTel Operator's server-injected toleration drift on every plan.
 
       affinity = {
         podAntiAffinity = {
@@ -330,7 +334,14 @@ resource "kubernetes_manifest" "otel_gateway" {
           }
         }
       }
-    }
+    }, length(var.tolerations) > 0 ? {
+      tolerations = [for t in var.tolerations : {
+        key      = t.key
+        operator = t.operator
+        value    = t.value
+        effect   = t.effect
+      }]
+    } : {})
   }
 
   depends_on = [

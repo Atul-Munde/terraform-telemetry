@@ -826,3 +826,30 @@ variable "mongodb_exporter_port" {
   type        = string
   default     = "http-metrics"
 }
+
+# ---------------------------------------------------------------------------
+# PostgreSQL / TimescaleDB Exporter Scraping
+# ---------------------------------------------------------------------------
+variable "postgres_scrape_enabled" {
+  description = "Enable VMServiceScrape to scrape postgres-exporter sidecars via VMAgent"
+  type        = bool
+  default     = false
+}
+
+variable "postgres_exporter_namespace" {
+  description = "Namespace to restrict postgres scraping to. Leave empty (\"\") to scrape across ALL namespaces."
+  type        = string
+  default     = ""
+}
+
+variable "postgres_exporter_label_key" {
+  description = "Label key present on ALL postgres-exporter Services. VMServiceScrape uses matchExpressions/Exists so every cluster is discovered regardless of label value."
+  type        = string
+  default     = "pg-exporter-service"
+}
+
+variable "postgres_exporter_port" {
+  description = "Container port number on the postgres-exporter that exposes /metrics (default: 9187)"
+  type        = number
+  default     = 9187
+}

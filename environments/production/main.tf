@@ -207,6 +207,16 @@ module "telemetry" {
     "app.kubernetes.io/name"      = "mongodb"
   }
   mongodb_exporter_port           = "http-metrics"
+
+  # PostgreSQL / TimescaleDB Exporter Scraping
+  # namespace left empty → discovers postgres-exporter services in ALL namespaces.
+  # Uses matchExpressions/Exists on label key "pg-exporter-service" — the key is
+  # constant across all clusters but the value differs (e.g. eoldb), so Exists
+  # matches every postgres-timescale cluster automatically.
+  postgres_scrape_enabled     = true
+  postgres_exporter_namespace = ""
+  postgres_exporter_label_key = "pg-exporter-service"
+  postgres_exporter_port      = 9187
 }
 
 # ---------------------------------------------------------------------------
