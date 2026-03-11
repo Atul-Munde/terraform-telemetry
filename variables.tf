@@ -853,3 +853,30 @@ variable "postgres_exporter_port" {
   type        = number
   default     = 9187
 }
+
+# ---------------------------------------------------------------------------
+# ScyllaDB Native Metrics Scraping
+# ---------------------------------------------------------------------------
+variable "scylladb_scrape_enabled" {
+  description = "Enable VMServiceScrape to scrape ScyllaDB native Prometheus metrics via VMAgent"
+  type        = bool
+  default     = false
+}
+
+variable "scylladb_exporter_namespace" {
+  description = "Namespace to restrict ScyllaDB scraping to. Leave empty (\"\") to scrape across ALL namespaces."
+  type        = string
+  default     = ""
+}
+
+variable "scylladb_exporter_service_labels" {
+  description = "matchLabels selector to identify ScyllaDB Services that expose the native Prometheus endpoint."
+  type        = map(string)
+  default     = { "app.kubernetes.io/name" = "scylla" }
+}
+
+variable "scylladb_exporter_port" {
+  description = "Container port number for ScyllaDB's built-in native Prometheus endpoint (default: 9180)"
+  type        = number
+  default     = 9180
+}

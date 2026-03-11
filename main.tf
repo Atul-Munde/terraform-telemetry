@@ -287,6 +287,12 @@ module "victoria_metrics" {
   postgres_exporter_label_key  = var.postgres_exporter_label_key
   postgres_exporter_port       = var.postgres_exporter_port
 
+  # ScyllaDB native metrics scraping
+  scylladb_scrape_enabled           = var.scylladb_scrape_enabled
+  scylladb_exporter_namespace       = var.scylladb_exporter_namespace
+  scylladb_exporter_service_labels  = var.scylladb_exporter_service_labels
+  scylladb_exporter_port            = var.scylladb_exporter_port
+
   # Node placement (shared with other modules)
   node_selector = var.node_selector
   tolerations   = var.tolerations

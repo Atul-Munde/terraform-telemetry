@@ -81,5 +81,5 @@ resource "kubernetes_manifest" "otel_infra_service_monitor" {
     }
   }
 
-  depends_on = [kubernetes_manifest.otel_infra_metrics]
+  depends_on = [helm_release.otel_operator]
 }

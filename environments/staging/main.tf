@@ -287,6 +287,17 @@ module "telemetry" {
   postgres_exporter_namespace = ""
   postgres_exporter_label_key = "pg-exporter-service"
   postgres_exporter_port      = 9187
+
+  # ScyllaDB Native Metrics Scraping
+  # namespace left empty → VMAgent discovers ScyllaDB services in ALL namespaces.
+  # ScyllaDB exposes metrics natively on port 9180 — no separate exporter needed.
+  # Selector matches app.kubernetes.io/name=scylla set by the Scylla Operator.
+  scylladb_scrape_enabled          = true
+  scylladb_exporter_namespace      = ""
+  scylladb_exporter_service_labels = {
+    "app.kubernetes.io/name" = "scylla"
+  }
+  scylladb_exporter_port           = 9180
 }
 
 # Outputs
