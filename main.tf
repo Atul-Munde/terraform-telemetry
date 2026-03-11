@@ -293,6 +293,12 @@ module "victoria_metrics" {
   scylladb_exporter_service_labels  = var.scylladb_exporter_service_labels
   scylladb_exporter_port            = var.scylladb_exporter_port
 
+  # Redis exporter scraping
+  redis_scrape_enabled          = var.redis_scrape_enabled
+  redis_exporter_namespace      = var.redis_exporter_namespace
+  redis_exporter_service_labels = var.redis_exporter_service_labels
+  redis_exporter_port           = var.redis_exporter_port
+
   # Node placement (shared with other modules)
   node_selector = var.node_selector
   tolerations   = var.tolerations

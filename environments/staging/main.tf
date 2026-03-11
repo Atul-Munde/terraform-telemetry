@@ -298,6 +298,16 @@ module "telemetry" {
     "app.kubernetes.io/name" = "scylla"
   }
   scylladb_exporter_port           = 9180
+
+  # Redis Exporter Scraping
+  # namespace left empty → VMAgent discovers redis-exporter services in ALL namespaces.
+  # Selector matches release=kube-prometheus-stack set on the redis-exporter Service.
+  redis_scrape_enabled          = true
+  redis_exporter_namespace      = ""
+  redis_exporter_service_labels = {
+    "release" = "kube-prometheus-stack"
+  }
+  redis_exporter_port           = 9121
 }
 
 # Outputs

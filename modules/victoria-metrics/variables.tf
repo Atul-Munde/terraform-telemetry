@@ -437,3 +437,30 @@ variable "scylladb_exporter_port" {
   type        = number
   default     = 9180
 }
+
+# ---------------------------------------------------------------------------
+# Redis Exporter Scraping
+# ---------------------------------------------------------------------------
+variable "redis_scrape_enabled" {
+  description = "Enable VMServiceScrape to scrape redis-exporter sidecars via VMAgent"
+  type        = bool
+  default     = false
+}
+
+variable "redis_exporter_namespace" {
+  description = "Namespace to restrict Redis scraping to. Leave empty (\"\") to scrape redis-exporter services across ALL namespaces (recommended when multiple Redis clusters exist in different namespaces)."
+  type        = string
+  default     = ""
+}
+
+variable "redis_exporter_service_labels" {
+  description = "matchLabels selector to identify redis-exporter Kubernetes Services."
+  type        = map(string)
+  default     = { "release" = "kube-prometheus-stack" }
+}
+
+variable "redis_exporter_port" {
+  description = "Container port number on the redis-exporter that exposes /metrics (standard prometheus redis-exporter default: 9121)"
+  type        = number
+  default     = 9121
+}
