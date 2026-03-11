@@ -238,6 +238,8 @@ module "telemetry" {
     "release" = "kube-prometheus-stack"
   }
   redis_exporter_port           = 9121
+
+  kube_prometheus_operator_watch_namespaces = var.kube_prometheus_operator_watch_namespaces
 }
 
 # ---------------------------------------------------------------------------
@@ -265,6 +267,12 @@ variable "alertmanager_url" {
   description = "Alertmanager URL for VMAlert to send alerts to"
   type        = string
   default     = ""
+}
+
+variable "kube_prometheus_operator_watch_namespaces" {
+  description = "Namespaces the Prometheus Operator will watch. Restricts scope to avoid CRD conflicts with other Prometheus Operators in the cluster."
+  type        = list(string)
+  default     = []
 }
 
 variable "eks_oidc_provider_arn" {

@@ -181,6 +181,9 @@ resource "helm_release" "kube_prometheus_stack" {
       # Grafana additional datasources
       vm_grafana_datasource_url     = var.vm_grafana_datasource_url
       jaeger_grafana_datasource_url = var.jaeger_grafana_datasource_url
+
+      # Prometheus Operator namespace isolation
+      prometheus_operator_watch_namespaces = var.prometheus_operator_watch_namespaces
     })
   ]
 

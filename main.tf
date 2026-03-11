@@ -214,6 +214,9 @@ module "kube_prometheus" {
   vm_grafana_datasource_url     = var.victoria_metrics_enabled ? "http://vmselect-${var.vm_cluster_name}.${var.namespace}.svc.cluster.local:8481/select/0/prometheus" : ""
   jaeger_grafana_datasource_url = "http://jaeger-query.${var.namespace}.svc.cluster.local:16686"
 
+  # Namespace isolation — prevent CRD conflicts with the older Prometheus Operator
+  prometheus_operator_watch_namespaces = var.kube_prometheus_operator_watch_namespaces
+
   depends_on = [module.namespace]
 }
 

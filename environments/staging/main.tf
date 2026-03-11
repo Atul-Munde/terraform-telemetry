@@ -74,6 +74,12 @@ variable "dash0_auth_token" {
   default     = ""
 }
 
+variable "kube_prometheus_operator_watch_namespaces" {
+  description = "Namespaces the Prometheus Operator will watch. Restricts scope to avoid CRD conflicts with other Prometheus Operators in the cluster."
+  type        = list(string)
+  default     = []
+}
+
 # Import root module
 module "telemetry" {
   source = "../.."
@@ -196,7 +202,8 @@ module "telemetry" {
   # ---------------------------------------------------------------------------
   # kube-prometheus Configuration
   # ---------------------------------------------------------------------------
-  kube_prometheus_enabled                = true
+  kube_prometheus_enabled                   = true
+  kube_prometheus_operator_watch_namespaces = var.kube_prometheus_operator_watch_namespaces
   kube_prometheus_create_storage_classes = true
   grafana_existing_claim                 = "kube-prometheus-stack-grafana"
   prometheus_resources = {

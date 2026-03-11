@@ -287,3 +287,12 @@ variable "jaeger_grafana_datasource_url" {
   type        = string
   default     = ""
 }
+
+# ---------------------------------------------------------------------------
+# Prometheus Operator namespace isolation
+# ---------------------------------------------------------------------------
+variable "prometheus_operator_watch_namespaces" {
+  description = "Namespaces the Prometheus Operator will watch for ServiceMonitor/PrometheusRule/etc CRDs. When non-empty, the operator is restricted to only these namespaces — required to avoid CRD ownership conflicts when a second Prometheus Operator exists in the cluster (e.g. an older operator watching 'observability'). Leave empty ([]) to watch all namespaces."
+  type        = list(string)
+  default     = []
+}

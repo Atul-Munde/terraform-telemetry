@@ -793,6 +793,15 @@ variable "eks_oidc_provider_arn" {
 }
 
 # ---------------------------------------------------------------------------
+# Prometheus Operator namespace isolation
+# ---------------------------------------------------------------------------
+variable "kube_prometheus_operator_watch_namespaces" {
+  description = "Namespaces the Prometheus Operator will watch for CRDs (ServiceMonitor, PrometheusRule, etc.). Set to a non-empty list to restrict namespace scope — required when a second Prometheus Operator already exists in the cluster watching a different namespace set (e.g. 'observability'). Leave empty ([]) to watch all namespaces."
+  type        = list(string)
+  default     = []
+}
+
+# ---------------------------------------------------------------------------
 # Dash0
 # ---------------------------------------------------------------------------
 variable "dash0_auth_token" {

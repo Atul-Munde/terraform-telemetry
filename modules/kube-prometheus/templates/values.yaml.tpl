@@ -185,6 +185,18 @@ prometheusOperator:
   admissionWebhooks:
     patch:
       nodeSelector: {}
+%{ if length(prometheus_operator_watch_namespaces) > 0 ~}
+  # Restrict the operator to only watch these namespaces.
+  # Prevents CRD conflicts when a second Prometheus Operator exists in the cluster
+  # (e.g. an older operator watching 'observability'). Each operator must be confined
+  # to a disjoint set of namespaces so they don't fight over the same CRDs.
+  namespaces:
+    releaseNamespace: false
+    additional:
+%{ for ns in prometheus_operator_watch_namespaces ~}
+      - ${ns}
+%{ endfor ~}
+%{ endif ~}
 
 # Kube-state-metrics
 kube-state-metrics:
