@@ -1,318 +1,215 @@
-# Project Structure
+# Architecture
+
+This document describes the full telemetry stack deployed on `intangles-qa-cluster` (EKS, `ap-south-1`).
+
+---
+
+## Signal Flow
 
 ```
-otel_terrform/
-├── README.md                           # Main documentation
-├── Makefile                           # Convenience commands
-├── .gitignore                         # Git ignore rules
+Applications (any namespace)
+        │
+        │  OTLP gRPC :4317 / HTTP :4318
+        ▼
+┌────────────────────────────────────────────────────────────────┐
+│  OTel Agent  (DaemonSet — otel-agent-collector)                │
+│  • one pod per node (nodeSelector: otel-agent=true)            │
+│  • receivers: otlp, kubeletstats (TLS skip for EKS)            │
+│  • exporters: otlp → Gateway                                   │
+└──────────────────────────┬─────────────────────────────────────┘
+                           │  OTLP gRPC :4317
+                           ▼
+┌────────────────────────────────────────────────────────────────┐
+│  OTel Gateway  (StatefulSet — otel-gateway-collector)          │
+│  • min 2 pods, HPA 2–8 (CPU + memory)                         │
+│  • headless service → load balancer consistent hashing         │
+│  • tail sampling processor (30 s decision wait)                │
+│  • exporters:                                                  │
+│    - otlp/jaeger  → jaeger-collector.telemetry:4317            │
+│    - prometheusremotewrite → vminsert-*.telemetry:8480         │
+│    - file/elasticsearch → elasticsearch-master.telemetry:9200  │
+└────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────┐
+│  OTel Infra-Metrics  (Deployment)                              │
+│  • scrapes MongoDB / PostgreSQL / custom endpoints             │
+│  • pushes metrics to vminsert via remote-write                 │
+└────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────┐   ┌─────────────────────────────────────┐
+│  Jaeger             │   │  VictoriaMetrics  (cluster mode)    │
+│  2 collector pods   │   │  vminsert x3 → vmstorage x3         │
+│  2 query pods       │   │  vmselect x3  (HPA 3-6 each)        │
+│  backend: ES 8.x    │   │  replication factor 2               │
+│  (jaeger-* indices) │   │  VMAgent scrapes cluster+DBs        │
+│                     │   │  VMAlert → Alertmanager             │
+│  Kibana (UI)        │   │  Grafana (kube-prometheus-stack)    │
+└─────────────────────┘   └─────────────────────────────────────┘
+```
+
+---
+
+## Kubernetes Resources
+
+### OTel Operator (controller-manager)
+
+- Helm chart: `opentelemetry-operator` 0.66.0
+- 2 replicas (HA leader-election)
+- Watches `OpenTelemetryCollector` and `Instrumentation` CRDs
+- Deploys Agent (DaemonSet), Gateway (StatefulSet), and Infra-Metrics (Deployment) from CRDs
+
+### OTel Agent (DaemonSet)
+
+- Kind: `OpenTelemetryCollector` (mode: `daemonset`)
+- Image: `otel/opentelemetry-collector-contrib:0.105.0`
+- Service: `otel-agent-collector.telemetry.svc.cluster.local` (ports 4317 / 4318)
+- NodeSelector: `otel-agent=true`
+- Receivers: `otlp`, `kubeletstats`
+- Exporters: `otlp` → Gateway gRPC
+
+### OTel Gateway (StatefulSet)
+
+- Kind: `OpenTelemetryCollector` (mode: `statefulset`)
+- Image: `otel/opentelemetry-collector-contrib:0.105.0`
+- Headless service: `otel-gateway-collector.telemetry.svc.cluster.local`
+- Ports: 4317 (gRPC), 4318 (HTTP), 8889 (Prometheus metrics)
+- Processors: `tail_sampling`, `batch`, `memory_limiter`
+- HPA: min 2 / max 8 pods
+- Exporters: `otlp/jaeger`, `prometheusremotewrite/vm`, optionally `file` (logs to ES)
+
+### OTel Instrumentation CRD
+
+- Auto-instruments Node.js pods in target namespace
+- Activated by annotation: `instrumentation.opentelemetry.io/inject-nodejs`
+
+---
+
+## Elasticsearch (Staging)
+
+Dedicated node-role topology:
+
+| Role | Replicas | Storage |
+|------|----------|---------|
+| master | 3 | 10 Gi gp3 |
+| data | 2 | 75 Gi gp3 |
+| coordinating | 2 | — (no PVC) |
+
+- Anti-affinity: `hard` (pods spread across nodes)
+- HTTPS + xpack security enabled
+- ILM job registers Jaeger fielddata index templates on every apply:
+  - `jaeger-service-override` (priority 100) — `fielddata:true` on serviceName, operationName
+  - `jaeger-span-override` (priority 100) — `fielddata:true` on serviceName, operationName, traceID, spanID
+
+---
+
+## Jaeger
+
+- Helm chart: `jaeger` 2.0.0
+- 2 query replicas + 2 collector replicas
+- Backend: Elasticsearch (index prefix `jaeger`)
+- `es.create-index-templates: "false"` — prevents Jaeger from overriding fielddata templates
+- Public UI: `https://jaeger.test.intangles.com` (ALB ingress)
+
+---
+
+## VictoriaMetrics
+
+- Operator-managed VMCluster CRD
+- 3× vmstorage (100 Gi gp3 each, replication factor 2)
+- 3× vminsert (HPA 3–6)
+- 3× vmselect (HPA 3–6, 20 Gi cache each)
+- VMAgent scrapes: cluster metrics, MongoDB (port `http-metrics`), PostgreSQL (port 9187)
+- VMAlert → Alertmanager at `kube-prometheus-stack-alertmanager.telemetry.svc.cluster.local:9093`
+- VMBackup → S3 via IRSA (IAM Role for Service Accounts)
+- Public VMUI: `https://vm.test.intangles.com` (ALB ingress)
+- Retention: 7 days
+
+---
+
+## kube-prometheus-stack
+
+- Operator watch namespaces restricted to `telemetry` (avoids CRD conflicts with other operators)
+- Provisions Grafana with pre-configured datasources:
+  - VictoriaMetrics vmselect (PromQL-compatible)
+  - Jaeger query server
+- Public Grafana: `https://grafana.test.intangles.com` (ALB ingress)
+
+---
+
+## Networking / Ingress
+
+All public UIs are exposed via AWS ALB:
+
+| Host | Service |
+|------|---------|
+| kibana.test.intangles.com | Kibana |
+| grafana.test.intangles.com | Grafana |
+| jaeger.test.intangles.com | Jaeger query |
+| vm.test.intangles.com | VictoriaMetrics UI |
+| otel.test.intangles.com | OTel Agent HTTP (OTLP) |
+
+ALB group: `intangles-ingress`
+ACM cert: `arn:aws:acm:ap-south-1:294202164463:certificate/6aaf4f38-c00f-4ad2-bf41-ae4ab88123a0`
+
+---
+
+## Terraform Structure
+
+```
+/
+├── main.tf              root module — composes all sub-modules
+├── variables.tf         all input variables with defaults
+├── outputs.tf           key endpoints output after apply
+├── versions.tf          provider version constraints
+├── backend.tf           S3 backend config
+├── terraform.tfvars.example
 │
-├── main.tf                            # Root module entry point
-├── variables.tf                       # Root variables
-├── outputs.tf                         # Root outputs
-├── versions.tf                        # Provider versions
-├── backend.tf                         # Remote state configuration
-├── terraform.tfvars.example           # Example variables
+├── modules/
+│   ├── namespace/       Kubernetes namespace resource
+│   ├── otel-operator/   OTel Operator Helm + CRD resources (Agent, Gateway, InfraMetrics, Instrumentation)
+│   │   ├── main.tf           Helm release
+│   │   ├── collector-agent.tf     Agent DaemonSet CRD (kubectl_manifest)
+│   │   ├── collector-gateway.tf   Gateway StatefulSet CRD (kubectl_manifest)
+│   │   ├── collector-infra-metrics.tf  Infra scraper CRD
+│   │   ├── instrumentation.tf     Auto-instrumentation CRD (kubectl_manifest)
+│   │   ├── servicemonitor.tf      ServiceMonitor CRD (kubectl_manifest)
+│   │   ├── hpa.tf                 HPA for Gateway
+│   │   ├── rbac.tf                ClusterRole + bindings
+│   │   └── secrets.tf             Credentials secrets
+│   ├── elasticsearch/   Helm + ILM/fielddata Job
+│   ├── kibana/          Helm + ALB ingress
+│   ├── jaeger/          Helm + ALB ingress
+│   ├── kube-prometheus/ kube-prometheus-stack Helm
+│   └── victoria-metrics/ VM Operator + VMCluster + VMAgent + VMAlert + S3 + IRSA
 │
-├── modules/                           # Terraform modules
-│   ├── namespace/                     # Namespace module
-│   │   ├── main.tf
-│   │   ├── variables.tf
-│   │   └── outputs.tf
-│   │
-│   ├── otel-collector/                # OpenTelemetry Collector module
-│   │   ├── main.tf                    # Module entry
-│   │   ├── variables.tf               # Input variables
-│   │   ├── outputs.tf                 # Output values
-│   │   ├── configmap.tf               # OTel config
-│   │   ├── deployment.tf              # Deployment + RBAC
-│   │   ├── service.tf                 # Kubernetes service
-│   │   └── hpa.tf                     # Horizontal Pod Autoscaler
-│   │
-│   ├── jaeger/                        # Jaeger module (Helm)
-│   │   ├── main.tf                    # Helm release
-│   │   ├── variables.tf               # Input variables
-│   │   └── outputs.tf                 # Output values
-│   │
-│   └── elasticsearch/                 # Elasticsearch module
-│       ├── main.tf                    # Helm release deployment
-│       ├── variables.tf               # Input variables
-│       └── outputs.tf                 # Output values
-│
-├── environments/                      # Environment-specific configs
-│   ├── dev/
-│   │   ├── main.tf                    # Dev environment config
-│   │   └── terraform.tfvars           # Dev variables (gitignored)
-│   │
-│   ├── staging/
-│   │   ├── main.tf                    # Staging environment config
-│   │   └── terraform.tfvars           # Staging variables (gitignored)
-│   │
-│   └── production/
-│       ├── main.tf                    # Production environment config
-│       └── terraform.tfvars           # Production variables (gitignored)
-│
-├── scripts/                           # Helper scripts
-│   ├── deploy.sh                      # Deployment script
-│   ├── cleanup.sh                     # Cleanup script
-│   └── validate.sh                    # Health check script
-│
-└── docs/                              # Documentation
-    ├── QUICKSTART.md                  # Quick start guide
-    ├── DEPLOYMENT.md                  # Detailed deployment guide
-    └── APPLICATION_INTEGRATION.md     # App integration guide
+└── environments/
+    ├── dev/             dev-specific main.tf + tfvars
+    ├── staging/         staging main.tf + tfvars (active)
+    └── production/      production main.tf + tfvars
 ```
 
-## Module Dependencies
+### Provider Notes
+
+| Provider | Why |
+|----------|-----|
+| `hashicorp/kubernetes ~> 2.25` | Core k8s resources (deployments, services, secrets) |
+| `hashicorp/helm ~> 2.12` | Helm chart releases |
+| `gavinbunney/kubectl ~> 1.14` | CRD-backed manifests — skips plan-time CRD validation (unlike `kubernetes_manifest`) |
+| `hashicorp/aws ~> 5.0` | ALB, ACM, S3, IAM (IRSA for VMBackup) |
+| `hashicorp/tls >= 4.0` | TLS certificate resources for ES |
+
+---
+
+## Module Dependency Graph
 
 ```
-main.tf (root)
-├── namespace module
-├── elasticsearch module
-│   └── depends on: namespace
-├── jaeger module
-│   └── depends on: namespace, elasticsearch
-└── otel-collector module
-    └── depends on: namespace, jaeger
+namespace
+  └── elasticsearch
+       ├── kibana
+       └── jaeger
+            └── otel_operator
+                 └── kube_prometheus
+                      └── victoria_metrics
 ```
 
-## Key Files Description
-
-### Root Level
-
-- **main.tf**: Orchestrates all modules, defines providers
-- **variables.tf**: Declares all input variables with validation
-- **outputs.tf**: Exports important values (endpoints, commands)
-- **versions.tf**: Pins Terraform and provider versions
-- **backend.tf**: Remote state configuration (S3, GCS, etc.)
-
-### Modules
-
-#### namespace/
-Creates or references Kubernetes namespace for isolation.
-
-#### otel-collector/
-- **configmap.tf**: YAML configuration for receivers, processors, exporters
-- **deployment.tf**: Pod spec, RBAC, resource limits, probes
-- **service.tf**: ClusterIP service exposing OTLP endpoints
-- **hpa.tf**: Auto-scaling based on CPU/memory metrics
-
-#### jaeger/
-- **main.tf**: Helm chart deployment with customized values
-  - Collector for receiving traces
-  - Query service for UI and API
-  - Elasticsearch storage integration
-
-#### elasticsearch/
-- **main.tf**: Helm chart deployment with:
-  - Official Elastic Helm chart (elastic/elasticsearch)
-  - Persistent volumes for data (gp3 storage)
-  - Dynamic heap size configuration (50% of memory limit)
-  - Security settings (xpack.security disabled for internal use)
-  - Sysctls for vm.max_map_count
-  - Master-eligible nodes with proper anti-affinity
-
-### Environments
-
-Each environment (dev/staging/production) has:
-- **main.tf**: Imports root module with env-specific values
-- **terraform.tfvars**: Environment-specific variable overrides
-
-Configuration differences by environment:
-- **Dev**: Minimal resources, single replicas, short retention
-- **Staging**: Medium resources, 2 replicas, moderate retention
-- **Production**: High resources, 3+ replicas, long retention, sampling enabled
-
-### Scripts
-
-- **deploy.sh**: Automated deployment with checks and confirmations
-- **cleanup.sh**: Safe destruction with multiple confirmations
-- **validate.sh**: Health checks for all components
-
-### Documentation
-
-- **QUICKSTART.md**: Get running in 5 minutes
-- **DEPLOYMENT.md**: Complete deployment guide with troubleshooting
-- **APPLICATION_INTEGRATION.md**: How to integrate applications with examples
-
-## Resource Naming Convention
-
-```
-Component                 Resource Type              Name
----------------------------------------------------------------------------
-OTel Collector           Deployment                 otel-collector
-                         Service                    otel-collector
-                         ConfigMap                  otel-collector-config
-                         ServiceAccount             otel-collector
-                         HPA                        otel-collector-hpa
-
-Jaeger                   Helm Release               jaeger
-                         Service (Query)            jaeger-query
-                         Service (Collector)        jaeger-collector
-
-Elasticsearch            Helm Release               elasticsearch
-                         StatefulSet                elasticsearch-master
-                         Service                    elasticsearch-master (headless)
-                         Service                    elasticsearch-master-headless
-                         PVC                        elasticsearch-master-elasticsearch-master-{0,1}
-```
-
-## Port Assignments
-
-```
-Service               Port    Purpose
----------------------------------------------------------------------------
-OTel Collector        4317    OTLP gRPC receiver
-                      4318    OTLP HTTP receiver
-                      8888    Metrics (Prometheus)
-                      13133   Health check
-                      55679   zPages
-
-Jaeger Collector      14250   gRPC from OTel
-                      14268   HTTP
-                      4317    OTLP gRPC
-                      4318    OTLP HTTP
-
-Jaeger Query          16686   UI and API
-
-Elasticsearch         9200    HTTP API
-                      9300    Transport (inter-node)
-```
-
-## Configuration Flow
-
-```
-1. terraform.tfvars (environment)
-   ↓
-2. main.tf (environment)
-   ↓
-3. modules/**/variables.tf
-   ↓
-4. modules/**/main.tf (resource creation)
-   ↓
-5. Kubernetes resources
-```
-
-## State Management
-
-```
-Local Development:
-  terraform.tfstate (local file, gitignored)
-
-Production:
-  S3 bucket + DynamoDB (or equivalent)
-  backend.tf configures remote state
-  State locking prevents concurrent modifications
-```
-
-## Secrets Management
-
-Current implementation:
-- No sensitive data required for basic setup
-- Elasticsearch runs without authentication (internal only)
-
-Production recommendations:
-- Use Kubernetes Secrets for credentials
-- Integrate with external secret managers:
-  - AWS Secrets Manager
-  - HashiCorp Vault
-  - Azure Key Vault
-  - Google Secret Manager
-
-## Extension Points
-
-Want to extend the setup? Here are the key extension points:
-
-1. **Add more exporters to OTel Collector**:
-   - Edit `modules/otel-collector/configmap.tf`
-   - Add exporter config in `exporters` section
-   - Update pipeline to include new exporter
-
-2. **Enable metrics/logs pipelines**:
-   - Add receivers in configmap
-   - Configure new pipelines in `service.pipelines`
-
-3. **Add Ingress for Jaeger UI**:
-   - Create ingress.tf in jaeger module
-   - Configure TLS with cert-manager
-
-4. **Integrate with Prometheus**:
-   - OTel Collector already exposes metrics on :8888
-   - Add ServiceMonitor CRD for Prometheus Operator
-
-5. **Add NetworkPolicies**:
-   - Create network-policies.tf in each module
-   - Define allowed traffic between components
-
-## Terraform State File Structure
-
-```
-terraform.tfstate
-├── version
-├── terraform_version
-├── serial
-├── lineage
-└── resources[]
-    ├── module.namespace
-    ├── module.elasticsearch[0]
-    ├── module.jaeger
-    └── module.otel_collector
-```
-
-## Best Practices Implemented
-
-✅ Modular architecture for reusability
-✅ Environment-specific configurations
-✅ Resource limits and requests
-✅ Health probes (liveness/readiness)
-✅ High availability (multiple replicas)
-✅ Auto-scaling (HPA)
-✅ Pod disruption budgets
-✅ Anti-affinity rules
-✅ Rolling update strategies
-✅ Meaningful labels and annotations
-✅ Descriptive variable validation
-✅ Comprehensive outputs
-✅ Version pinning
-✅ Documentation
-
-## Maintenance
-
-### Regular Updates
-
-1. **Terraform providers**:
-   ```bash
-   terraform init -upgrade
-   ```
-
-2. **OTel Collector version**:
-   - Update `otel_collector_version` variable
-   - Test in dev first
-
-3. **Jaeger chart**:
-   - Update `jaeger_chart_version` variable
-   - Review chart release notes
-
-4. **Elasticsearch**:
-   - Update image in elasticsearch module
-   - Plan data migration if needed
-
-### Monitoring
-
-Create alerts for:
-- Pod crashes/restarts
-- High memory usage
-- Disk space on Elasticsearch PVCs
-- HPA scale events
-- Failed span exports
-
-### Backup Strategy
-
-**Elasticsearch data**:
-1. Configure snapshot repository
-2. Schedule regular snapshots
-3. Test restore procedures
-
-**Terraform state**:
-1. Use remote backend with versioning
-2. Enable state locking
-3. Regular state backups
+(`depends_on` enforces this ordering — Jaeger waits for ES, OTel Operator waits for Jaeger endpoint.)

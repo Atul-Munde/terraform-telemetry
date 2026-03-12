@@ -1,429 +1,171 @@
 # Deployment Guide
 
-This guide walks you through deploying the OpenTelemetry Collector and Jaeger stack on Kubernetes using Terraform.
+Deploying the telemetry stack to `intangles-qa-cluster` (`ap-south-1`).
 
-## Prerequisites Checklist
+---
 
-Before deploying, ensure you have:
+## Prerequisites
 
-- [ ] Kubernetes cluster (v1.24+) up and running
-- [ ] kubectl installed and configured (`kubectl version`)
-- [ ] Terraform installed (v1.5.0+) (`terraform version`)
-- [ ] Helm installed (v3.0+) (`helm version`)
-- [ ] Appropriate cluster permissions (cluster-admin or equivalent)
-- [ ] Storage class available for Elasticsearch PVCs
-- [ ] Sufficient cluster resources (see Resource Requirements below)
+- Terraform >= 1.5
+- `kubectl` configured: `aws eks update-kubeconfig --region ap-south-1 --name intangles-qa-cluster --profile mum-test`
+- Helm >= 3.12
+- AWS profile `mum-test` with EKS + S3 + IAM permissions
 
-## Resource Requirements
+---
 
-### Minimum (Dev Environment)
-- **Nodes**: 2-3 nodes
-- **CPU**: 4 cores total
-- **Memory**: 8 GB total
-- **Storage**: 50 GB for Elasticsearch
-
-### Recommended (Staging)
-- **Nodes**: 3-5 nodes
-- **CPU**: 8 cores total
-- **Memory**: 16 GB total
-- **Storage**: 100 GB for Elasticsearch
-
-### Production
-- **Nodes**: 5+ nodes
-- **CPU**: 16+ cores total
-- **Memory**: 32+ GB total
-- **Storage**: 300+ GB for Elasticsearch
-
-## Step-by-Step Deployment
-
-### Step 1: Verify Cluster Access
+## Deploy (Staging)
 
 ```bash
-# Check cluster connection
-kubectl cluster-info
+cd /path/to/otel_terrform/environments/staging
 
-# Check available nodes
-kubectl get nodes
+# 1. Init Terraform (first time or after provider changes)
+terraform init \
+  -backend-config="bucket=intangles-tf-state" \
+  -backend-config="key=staging/telemetry.tfstate" \
+  -backend-config="region=ap-south-1"
 
-# Check storage classes
-kubectl get storageclass
+# 2. Plan
+terraform plan \
+  -var="elastic_password=<password>" \
+  -var="kibana_encryption_key=<32-char-key>"
+
+# 3. Apply
+TF_VAR_elastic_password='<password>' \
+TF_VAR_kibana_encryption_key='<32-char-key>' \
+terraform apply -auto-approve
 ```
 
-### Step 2: Clone and Navigate
+> The `kibana_encryption_key` must be exactly 32 characters.  
+> Never commit credentials to `terraform.tfvars`.
+
+---
+
+## Apply Script (if using .tf_apply.sh)
+
+From the workspace root:
 
 ```bash
-cd /Users/atulmunde/otel_terrform
+TF_VAR_elastic_password='<password>' \
+TF_VAR_kibana_encryption_key='<32-char-key>' \
+zsh .tf_apply.sh -auto-approve
 ```
 
-### Step 3: Choose Your Environment
+---
 
-For development:
-```bash
-cd environments/dev
-```
-
-For staging:
-```bash
-cd environments/staging
-```
-
-For production:
-```bash
-cd environments/production
-```
-
-### Step 4: Review Configuration
-
-Edit `terraform.tfvars` to adjust settings for your environment:
+## Verify Deployment
 
 ```bash
-# Review current configuration
-cat terraform.tfvars
-
-# Make necessary changes
-vim terraform.tfvars
-```
-
-Key settings to review:
-- `elasticsearch_storage_class` - Set to your cluster's storage class
-- `elasticsearch_storage_size` - Adjust based on retention needs
-- `data_retention_days` - How long to keep traces
-- Resource limits based on your cluster capacity
-
-### Step 5: Initialize Terraform
-
-```bash
-terraform init
-```
-
-This will:
-- Download required providers (Kubernetes, Helm)
-- Initialize backend (if configured)
-- Prepare modules
-
-### Step 6: Review Execution Plan
-
-```bash
-terraform plan
-```
-
-Review the output carefully. You should see:
-- Namespace creation
-- ConfigMaps for OTel Collector
-- Deployments for OTel Collector
-- Helm release for Elasticsearch
-- Helm release for Jaeger
-- Services, HPAs, PDBs, etc.
-
-### Step 7: Apply Configuration
-
-```bash
-terraform apply
-```
-
-Type `yes` when prompted to confirm.
-
-Expected deployment time:
-- **Dev**: 3-5 minutes
-- **Staging**: 5-8 minutes
-- **Production**: 8-12 minutes
-
-### Step 8: Verify Deployment
-
-```bash
-# Check namespace
-kubectl get namespace telemetry
-
-# Check all pods
+# All pods
 kubectl get pods -n telemetry
 
-# Wait for all pods to be ready
-kubectl wait --for=condition=ready pod --all -n telemetry --timeout=600s
+# OTel Agent DaemonSet (1 per node)
+kubectl get pods -n telemetry -l app.kubernetes.io/name=otel-agent-collector
 
-# Check services
-kubectl get svc -n telemetry
+# OTel Gateway StatefulSet (min 2)
+kubectl get pods -n telemetry -l app.kubernetes.io/name=otel-gateway-collector
 
-# Check PVCs
-kubectl get pvc -n telemetry
+# Elasticsearch — dedicated roles
+kubectl get pods -n telemetry -l chart=elasticsearch
+
+# Jaeger
+kubectl get pods -n telemetry -l app.kubernetes.io/name=jaeger
+
+# VictoriaMetrics
+kubectl get pods -n telemetry | grep -E "vminsert|vmselect|vmstorage|vmagent|vmalert"
+
+# Kibana
+kubectl get pods -n telemetry -l app=kibana
 ```
 
-Expected pods:
-```
-NAME                                    READY   STATUS    RESTARTS   AGE
-otel-collector-xxxxx-xxxxx              1/1     Running   0          2m
-jaeger-collector-xxxxx-xxxxx            1/1     Running   0          2m
-jaeger-query-xxxxx-xxxxx                2/2     Running   0          2m
-elasticsearch-master-0                  1/1     Running   0          3m
-elasticsearch-master-1                  1/1     Running   0          2m
-```
+Expected state after a healthy apply:
 
-### Step 9: Access Jaeger UI
+| Pod pattern | Expected count |
+|-------------|---------------|
+| `otel-agent-collector-*` | 1 per node |
+| `otel-gateway-collector-*` | 2–8 |
+| `otel-infra-metrics-*` | 1 |
+| `elasticsearch-master-*` | 3 |
+| `elasticsearch-data-*` | 2 |
+| `elasticsearch-coordinating-*` | 2 |
+| `kibana-*` | 1 |
+| `jaeger-query-*` | 2 |
+| `jaeger-collector-*` | 2 |
+| `vminsert-*` | 3 |
+| `vmselect-*` | 3 |
+| `vmstorage-*` | 3 |
+| `vmagent-*` | 1 |
+| `vmalert-*` | 1 |
+
+---
+
+## Targeted Module Redeploy
+
+To destroy and redeploy a specific module:
 
 ```bash
-# Port forward Jaeger Query UI
-kubectl port-forward -n telemetry svc/jaeger-query 16686:16686
+# Redeploy Kibana
+terraform destroy -target='module.telemetry.module.kibana[0]' -auto-approve
+TF_VAR_elastic_password='...' TF_VAR_kibana_encryption_key='...' terraform apply -auto-approve
+
+# Redeploy OTel Operator
+terraform destroy -target='module.telemetry.module.otel_operator[0]' -auto-approve
+terraform apply -auto-approve
 ```
 
-Open browser: http://localhost:16686
+---
 
-### Step 10: Test with Sample Application
-
-Deploy a test application that sends traces:
+## Destroying the Stack
 
 ```bash
-kubectl apply -f - <<EOF
-apiVersion: v1
-kind: Pod
-metadata:
-  name: otel-test
-  namespace: default
-spec:
-  containers:
-  - name: test
-    image: curlimages/curl:latest
-    command: 
-      - sh
-      - -c
-      - |
-        while true; do
-          curl -X POST http://otel-collector.telemetry.svc.cluster.local:4318/v1/traces \
-            -H "Content-Type: application/json" \
-            -d '{
-              "resourceSpans": [{
-                "resource": {
-                  "attributes": [{
-                    "key": "service.name",
-                    "value": {"stringValue": "test-service"}
-                  }]
-                },
-                "scopeSpans": [{
-                  "spans": [{
-                    "traceId": "5b8aa5a2d2c872e8321cf37308d69df2",
-                    "spanId": "051581bf3cb55c13",
-                    "name": "test-span",
-                    "kind": 1,
-                    "startTimeUnixNano": "1544712660000000000",
-                    "endTimeUnixNano": "1544712661000000000"
-                  }]
-                }]
-              }]
-            }'
-          sleep 10
-        done
-    restartPolicy: Always
-EOF
+TF_VAR_elastic_password='<password>' \
+TF_VAR_kibana_encryption_key='<32-char-key>' \
+terraform destroy -auto-approve
 ```
 
-After a minute, you should see traces in Jaeger UI.
+> Note: PVCs (Elasticsearch, VictoriaMetrics) are not automatically deleted. Delete them manually if unused:
+> ```bash
+> kubectl delete pvc -n telemetry --all
+> ```
 
-## Post-Deployment Configuration
+---
 
-### Configure Remote State (Production)
+## Outputs After Apply
 
-For production, configure remote state backend:
+Key outputs printed after a successful apply:
 
-1. Edit `backend.tf`:
+```
+otel_agent_grpc_endpoint     = "otel-agent-collector.telemetry.svc.cluster.local:4317"
+otel_agent_http_endpoint     = "http://otel-agent-collector.telemetry.svc.cluster.local:4318"
+vm_prometheus_remote_write_url = "http://vminsert-victoria-metrics.telemetry.svc.cluster.local:8480/insert/0/prometheus/api/v1/write"
+kibana_url                   = "https://kibana.test.intangles.com"
+jaeger_url                   = "https://jaeger.test.intangles.com"
+grafana_url                  = "https://grafana.test.intangles.com"
+vm_ui_url                    = "https://vm.test.intangles.com"
+```
+
+---
+
+## Upgrading Chart Versions
+
+Update the relevant variable in `environments/staging/terraform.tfvars`:
+
 ```hcl
-terraform {
-  backend "s3" {
-    bucket         = "your-terraform-state-bucket"
-    key            = "k8s-otel-jaeger/production/terraform.tfstate"
-    region         = "us-west-2"
-    dynamodb_table = "terraform-state-lock"
-    encrypt        = true
-  }
-}
+jaeger_chart_version        = "2.0.0"
+kibana_chart_version        = "8.5.1"
+otel_operator_chart_version = "0.66.0"
+vm_operator_chart_version   = "<new-version>"
 ```
 
-2. Migrate state:
-```bash
-terraform init -migrate-state
-```
+Then `terraform apply`. Helm will upgrade the release in-place.
 
-### Setup Ingress (Optional)
+---
 
-If you want external access to Jaeger UI:
+## Adding New Nodes for OTel Agent Coverage
 
-```yaml
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: jaeger-ui
-  namespace: telemetry
-  annotations:
-    cert-manager.io/cluster-issuer: "letsencrypt-prod"
-spec:
-  ingressClassName: nginx
-  tls:
-  - hosts:
-    - jaeger.yourdomain.com
-    secretName: jaeger-tls
-  rules:
-  - host: jaeger.yourdomain.com
-    http:
-      paths:
-      - path: /
-        pathType: Prefix
-        backend:
-          service:
-            name: jaeger-query
-            port:
-              number: 16686
-```
-
-### Setup Monitoring
-
-Monitor the telemetry stack itself:
+The Agent DaemonSet uses nodeSelector `otel-agent=true`. Label new nodes:
 
 ```bash
-# Check HPA status
-kubectl get hpa -n telemetry
-
-# Check resource usage
-kubectl top pods -n telemetry
-
-# Check Elasticsearch health
-kubectl exec -n telemetry elasticsearch-master-0 -- \
-  curl -s http://localhost:9200/_cluster/health?pretty
+kubectl label node <node-name> otel-agent=true
 ```
 
-## Troubleshooting Deployment
-
-### Pods Not Starting
-
-```bash
-# Check pod status
-kubectl get pods -n telemetry
-
-# Describe problematic pod
-kubectl describe pod <pod-name> -n telemetry
-
-# Check logs
-kubectl logs <pod-name> -n telemetry
-```
-
-### Elasticsearch Stuck in Pending
-
-Usually due to PVC issues:
-
-```bash
-# Check PVC status
-kubectl get pvc -n telemetry
-
-# Describe PVC
-kubectl describe pvc <pvc-name> -n telemetry
-
-# Check storage class
-kubectl get storageclass
-```
-
-Fix: Ensure your cluster has a default storage class or specify one in terraform.tfvars.
-
-### OTel Collector CrashLoopBackOff
-
-Check configuration:
-
-```bash
-kubectl logs -n telemetry -l app=otel-collector --tail=50
-
-# Check configmap
-kubectl get configmap otel-collector-config -n telemetry -o yaml
-```
-
-### Helm Release Failed
-
-```bash
-# Check Helm releases
-helm list -n telemetry
-
-# Get release status
-helm status jaeger -n telemetry
-
-# Check Helm logs
-helm history jaeger -n telemetry
-```
-
-Fix and retry:
-```bash
-# Uninstall and let Terraform recreate
-helm uninstall jaeger -n telemetry
-terraform apply
-```
-
-### Insufficient Resources
-
-If pods are pending due to insufficient resources:
-
-```bash
-kubectl describe pod <pod-name> -n telemetry | grep -A 5 Events
-```
-
-Solution: Scale down or add more nodes to your cluster.
-
-## Updating the Stack
-
-### Update Component Versions
-
-1. Edit `terraform.tfvars`:
-```hcl
-otel_collector_version = "0.96.0"  # New version
-jaeger_chart_version = "2.1.0"     # New version
-```
-
-2. Plan and apply:
-```bash
-terraform plan
-terraform apply
-```
-
-### Scale Components
-
-```bash
-# Edit terraform.tfvars
-otel_collector_replicas = 5
-jaeger_collector_replicas = 3
-
-# Apply changes
-terraform apply
-```
-
-### Update Configuration
-
-After changing OTel Collector config:
-
-```bash
-# Apply changes
-terraform apply
-
-# Restart pods to pick up new config
-kubectl rollout restart deployment/otel-collector -n telemetry
-```
-
-## Cleanup
-
-### Development/Testing
-
-```bash
-cd environments/dev
-terraform destroy
-```
-
-### Production (Careful!)
-
-```bash
-cd environments/production
-
-# Review what will be destroyed
-terraform plan -destroy
-
-# Backup any important data first!
-# Then destroy
-terraform destroy
-```
-
-## Next Steps
-
-- [Application Integration Guide](./APPLICATION_INTEGRATION.md)
-- [Operations Guide](./OPERATIONS.md)
-- [Troubleshooting Guide](./TROUBLESHOOTING.md)
-- [Security Best Practices](./SECURITY.md)
+The DaemonSet will automatically schedule an Agent pod on the new node.

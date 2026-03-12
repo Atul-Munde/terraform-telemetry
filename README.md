@@ -1,355 +1,297 @@
-# Production-Grade OpenTelemetry Collector & Jaeger on Kubernetes
+# Telemetry Stack — Terraform (EKS / `ap-south-1`)
 
-A complete Terraform-based infrastructure-as-code solution for deploying OpenTelemetry Collector and Jaeger distributed tracing on Kubernetes.
+Production-grade observability platform for the **`intangles`** cluster, managed entirely with Terraform.
+All components live in the `telemetry` Kubernetes namespace on **`intangles-qa-cluster`** (`ap-south-1`).
+
+---
 
 ## Architecture Overview
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                     Kubernetes Cluster                       │
-├─────────────────────────────────────────────────────────────┤
-│                                                               │
-│  ┌──────────────────┐      ┌──────────────────┐            │
-│  │   Microservice   │─────▶│   OTel Collector │            │
-│  │   +OTLP Client   │      │   (Deployment)   │            │
-│  └──────────────────┘      │   - Batch/Retry  │            │
-│                             │   - Sampling     │            │
-│  ┌──────────────────┐      │   - HPA Enabled  │            │
-│  │   Microservice   │─────▶│                  │            │
-│  │   +OTLP Client   │      └─────────┬────────┘            │
-│  └──────────────────┘                │                      │
-│                                       │                      │
-│                                       ▼                      │
-│                          ┌────────────────────┐             │
-│                          │  Jaeger Collector  │             │
-│                          └─────────┬──────────┘             │
-│                                    │                         │
-│                                    ▼                         │
-│                          ┌────────────────────┐             │
-│                          │  Elasticsearch     │             │
-│                          │  (StatefulSet)     │             │
-│                          └─────────┬──────────┘             │
-│                                    │                         │
-│                                    ▼                         │
-│                          ┌────────────────────┐             │
-│                          │   Jaeger Query     │             │
-│                          │   (UI + API)       │             │
-│                          └────────────────────┘             │
-│                                                               │
-└─────────────────────────────────────────────────────────────┘
+Applications (any namespace)
+        │
+        │  OTLP gRPC / HTTP  (push)
+        ▼
+┌────────────────────────────────────┐
+│  OTel Agent  (DaemonSet)           │  ← 1 pod per node
+│  otel-agent-collector              │    receives spans / metrics / logs locally
+└──────────────┬─────────────────────┘
+               │  OTLP gRPC  (forward all signals)
+               ▼
+┌────────────────────────────────────┐
+│  OTel Gateway (StatefulSet)        │  ← tail sampling + fan-out
+│  otel-gateway-collector            │    min 2 pods (HPA 2–8), headless service
+└────────┬───────────────────────────┘
+         │ Traces         │ Metrics          │ Logs
+         ▼                ▼                  ▼
+   Jaeger (ES backend)  VictoriaMetrics  Elasticsearch
+   jaeger-collector     vminsert:8480    (fileexporter)
+         │                │
+         ▼                ▼
+   Jaeger UI       Grafana (kube-prometheus-stack)
+   Kibana
 ```
 
-## Features
-
-### ✅ Production-Ready
-- **High Availability**: Multiple replicas with PodDisruptionBudgets
-- **Auto-Scaling**: HPA for OTel Collector based on CPU/Memory
-- **Health Monitoring**: Liveness and readiness probes
-- **Graceful Updates**: Rolling update strategies
-- **Resource Management**: Proper requests and limits
-
-### ✅ Security
-- **RBAC**: ServiceAccounts with least-privilege roles
-- **Secrets Management**: Kubernetes secrets for credentials
-- **Network Policies**: (Optional) Namespace isolation
-- **TLS**: Support for secure communication
-
-### ✅ Scalability
-- **Horizontal Scaling**: OTel Collector with HPA
-- **Batching & Buffering**: Optimized telemetry pipelines
-- **Storage Backend**: Elasticsearch via Helm chart
-- **Retention Policies**: Configurable data retention
-
-### ✅ Infrastructure as Code
-- **Terraform Modules**: Reusable, composable components
-- **Environment Parity**: Consistent dev/staging/prod
-- **Remote State**: S3 backend with state locking
-- **Version Control**: Pinned provider versions
-
-## Directory Structure
-
-```
-.
-├── README.md
-├── main.tf                      # Root module
-├── variables.tf                 # Root variables
-├── outputs.tf                   # Root outputs
-├── versions.tf                  # Provider versions
-├── backend.tf                   # Remote state configuration
-├── terraform.tfvars.example     # Example variables
-├── environments/
-│   ├── dev/
-│   │   ├── main.tf
-│   │   └── terraform.tfvars
-│   ├── staging/
-│   │   ├── main.tf
-│   │   └── terraform.tfvars
-│   └── production/
-│       ├── main.tf
-│       └── terraform.tfvars
-└── modules/
-    ├── namespace/
-    │   ├── main.tf
-    │   ├── variables.tf
-    │   └── outputs.tf
-    ├── otel-collector/
-    │   ├── main.tf
-    │   ├── variables.tf
-    │   ├── outputs.tf
-    │   ├── configmap.tf
-    │   ├── deployment.tf
-    │   ├── service.tf
-    │   └── hpa.tf
-    ├── jaeger/
-    │   ├── main.tf
-    │   ├── variables.tf
-    │   └── outputs.tf
-    └── elasticsearch/
-        ├── main.tf
-        ├── variables.tf
-        └── outputs.tf
-```
-
-## Prerequisites
-
-1. **Terraform** >= 1.5.0
-2. **Kubernetes Cluster** (1.24+)
-3. **kubectl** configured with cluster access
-4. **Helm** >= 3.0 (for Jaeger charts)
-5. **Storage Class** available in cluster (for Elasticsearch PVCs)
-
-## Quick Start
-
-### 1. Prerequisites Setup
-
-**First-time setup requires:**
-
-1. **AWS S3 Backend** (see [docs/SETUP.md](docs/SETUP.md) for details)
-   ```bash
-   # Create S3 bucket and DynamoDB table
-   aws s3api create-bucket --bucket otel-terraform-state-setup \
-     --region ap-south-1 --create-bucket-configuration LocationConstraint=ap-south-1
-   
-   aws dynamodb create-table --table-name terraform-state-lock \
-     --attribute-definitions AttributeName=LockID,AttributeType=S \
-     --key-schema AttributeName=LockID,KeyType=HASH \
-     --billing-mode PAY_PER_REQUEST --region ap-south-1
-   ```
-
-2. **Kubernetes Nodes** (label and taint for dedicated telemetry):
-   ```bash
-   # Label nodes
-   kubectl label nodes <node-name> telemetry=true
-   
-   # Taint nodes (dedicate for telemetry only)
-   kubectl taint nodes <node-name> telemetry=true:NoSchedule
-   ```
-
-3. **Storage Class** (verify gp3 exists):
-   ```bash
-   kubectl get storageclass gp3
-   ```
-
-### 2. Set Environment Variables
-
-```bash
-export KUBECONFIG=~/.kube/config
-export TF_VAR_environment=dev
-export AWS_REGION=ap-south-1  # For S3 backend
-```
-
-### 3. Initialize Terraform
-
-```bash
-cd environments/dev
-terraform init
-```
-
-### 4. Review Plan
-
-```bash
-terraform plan
-```
-
-### 5. Apply Configuration
-
-```bash
-terraform apply
-```
-
-## Environment-Specific Deployments
-
-### Development
-```bash
-cd environments/dev
-terraform init
-terraform apply
-```
-
-### Staging
-```bash
-cd environments/staging
-terraform init
-terraform apply
-```
-
-### Production
-```bash
-cd environments/production
-terraform init
-terraform apply
-```
-
-## Configuration
-
-### Current Setup
-
-**AWS Backend:**
-- S3 Bucket: `otel-terraform-state-setup`
-- Region: `ap-south-1` (Mumbai)
-- DynamoDB: `terraform-state-lock`
-
-**Kubernetes:**
-- Namespace: `telemetry`
-- Node Selector: `telemetry=true`
-- Toleration: `telemetry=true:NoSchedule`
-- Storage Class: `gp3` (AWS EBS)
-
-### OpenTelemetry Collector
-
-Key configuration options:
-
-- **Receivers**: OTLP gRPC (4317), OTLP HTTP (4318)
-- **Processors**: Batch, memory limiter, tail sampling
-- **Exporters**: Jaeger, logging (for debugging)
-- **Replicas**: 2-5 based on environment
-- **HPA**: CPU/Memory based auto-scaling
-
-### Jaeger
-
-Deployed via Helm chart with:
-
-- **Storage**: Elasticsearch backend
-- **Components**: Collector, Query, Agent (optional)
-- **UI Access**: ClusterIP (use port-forward or Ingress)
-- **Retention**: Configurable span retention period
-
-### Elasticsearch
-
-- **Deployment**: StatefulSet for data persistence
-- **Replicas**: 3 for production (HA)
-- **Storage**: Persistent volumes (100Gi default)
-- **Index Lifecycle**: Automatic rollover and deletion
-
-## Accessing Services
-
-### Jaeger UI
-
-```bash
-kubectl port-forward -n telemetry svc/jaeger-query 16686:16686
-```
-
-Then open: http://localhost:16686
-
-### OpenTelemetry Collector Endpoints
-
-From inside cluster:
-- **OTLP gRPC**: `otel-collector.telemetry.svc.cluster.local:4317`
-- **OTLP HTTP**: `otel-collector.telemetry.svc.cluster.local:4318`
-
-### Elasticsearch
-
-```bash
-kubectl port-forward -n telemetry svc/elasticsearch 9200:9200
-```
-
-## Application Integration
-
-### Example: Sending Traces to OTel Collector
-
-**Go Application:**
-```go
-import (
-    "go.opentelemetry.io/otel"
-    "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
-)
-
-exporter, _ := otlptracegrpc.New(
-    context.Background(),
-    otlptracegrpc.WithEndpoint("otel-collector.telemetry.svc.cluster.local:4317"),
-    otlptracegrpc.WithInsecure(),
-)
-```
-
-**Python Application:**
-```python
-from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-
-otlp_exporter = OTLPSpanExporter(
-    endpoint="otel-collector.telemetry.svc.cluster.local:4317",
-    insecure=True
-)
-```
-
-**Environment Variables:**
-```yaml
-env:
-  - name: OTEL_EXPORTER_OTLP_ENDPOINT
-    value: "http://otel-collector.telemetry.svc.cluster.local:4318"
-  - name: OTEL_SERVICE_NAME
-    value: "my-service"
-```
-
-## Monitoring & Operations
-
-### Check OTel Collector Status
-
-```bash
-kubectl get pods -n telemetry -l app=otel-collector
-kubectl logs -n telemetry -l app=otel-collector --tail=100
-```
-
-### Check Jaeger Status
-
-```bash
-kubectl get pods -n telemetry -l app.kubernetes.io/name=jaeger
-kubectl logs -n telemetry -l app.kubernetes.io/component=query
-```
-
-### Check Elasticsearch Health
-
-```bash
-kubectl exec -n telemetry elasticsearch-master-0 -- curl -s http://localhost:9200/_cluster/health?pretty
-```
-
-## Troubleshooting
-
-### No Traces Appearing
-
-1. Check OTel Collector logs
-2. Verify Jaeger collector connectivity
-3. Check Elasticsearch indices
-
-### High Memory Usage
-
-1. Adjust memory limiter in OTel config
-2. Tune batch processor settings
-3. Implement sampling strategies
-
-## Security Best Practices
-
-- [ ] Enable TLS for inter-service communication
-- [ ] Use external secrets manager (AWS Secrets Manager, HashiCorp Vault)
-- [ ] Implement NetworkPolicies for namespace isolation
-- [ ] Enable Pod Security Standards
-- [ ] Configure RBAC with minimal permissions
-
-## License
-
-MIT
+### Component Inventory
+
+| Component | Kind | Chart / Image Version | Replicas (staging) |
+|-----------|------|-----------------------|-------------------|
+| opentelemetry-operator | Helm | 0.66.0 | 2 (HA) |
+| OTel Agent | DaemonSet (CRD) | otelcol-contrib 0.105.0 | 1 per node |
+| OTel Gateway | StatefulSet (CRD) | otelcol-contrib 0.105.0 | 2–8 (HPA) |
+| OTel Infra-Metrics | Deployment (CRD) | otelcol-contrib 0.105.0 | 1 |
+| Elasticsearch | Helm | 8.x (dedicated roles) | 3 master + 2 data + 2 coordinating |
+| Kibana | Helm | 8.5.1 | 1 |
+| Jaeger | Helm | 2.0.0 | 2 query + 2 collector |
+| VictoriaMetrics | Operator + VMCluster | cluster mode | 3 storage + 3 insert + 3 select |
+| Grafana | kube-prometheus-stack | — | 1 |
+| VMAgent | CRD | — | 1 |
+| VMAlert | CRD | — | 1 |
 
 ---
 
-**Last Updated**: February 2026  
-**Terraform Version**: 1.5+  
-**Kubernetes Version**: 1.24+
+## Endpoints
+
+### Internal (within-cluster)
+
+| Service | Address |
+|---------|---------|
+| OTel Agent gRPC | `otel-agent-collector.telemetry.svc.cluster.local:4317` |
+| OTel Agent HTTP | `http://otel-agent-collector.telemetry.svc.cluster.local:4318` |
+| OTel Gateway gRPC | `otel-gateway-collector.telemetry.svc.cluster.local:4317` |
+| VictoriaMetrics write | `http://vminsert-victoria-metrics.telemetry.svc.cluster.local:8480/insert/0/prometheus/api/v1/write` |
+| VictoriaMetrics query | `http://vmselect-victoria-metrics.telemetry.svc.cluster.local:8481/select/0/prometheus` |
+| Jaeger query | `http://jaeger-query.telemetry.svc.cluster.local:16686` |
+| Elasticsearch | `https://elasticsearch-master.telemetry.svc.cluster.local:9200` |
+
+### Public (AWS ALB + ACM TLS)
+
+| UI | URL |
+|----|-----|
+| Kibana | https://kibana.test.intangles.com |
+| Grafana | https://grafana.test.intangles.com |
+| Jaeger | https://jaeger.test.intangles.com |
+| VictoriaMetrics | https://vm.test.intangles.com |
+| OTel (OTLP HTTP) | https://otel.test.intangles.com |
+
+ALB group: `intangles-ingress`
+ACM cert: `arn:aws:acm:ap-south-1:294202164463:certificate/6aaf4f38-c00f-4ad2-bf41-ae4ab88123a0`
+
+---
+
+## Terraform Modules
+
+```
+modules/
+├── namespace/           creates telemetry namespace + resource labels
+├── otel-operator/       OTel Operator Helm + Agent/Gateway/InfraMetrics CRDs + RBAC + Instrumentation CRD
+├── elasticsearch/       Elasticsearch Helm, ILM job, Jaeger fielddata index templates
+├── kibana/              Kibana Helm + ALB ingress
+├── jaeger/              Jaeger Helm (ES backend), 2 query + 2 collector replicas
+├── kube-prometheus/     kube-prometheus-stack (Prometheus CRDs, Grafana, Alertmanager)
+└── victoria-metrics/    VictoriaMetrics Operator + VMCluster + VMAgent + VMAlert + S3 backup
+```
+
+All modules are independently togglable via `*_enabled` booleans in `variables.tf`.
+
+---
+
+## Environments
+
+```
+environments/
+├── dev/         minimal single-node, no HA
+├── staging/     full HA stack — active (ap-south-1, intangles-qa-cluster)
+└── production/  production config
+```
+
+Each environment has its own `main.tf` (calls root module) and `terraform.tfvars`.
+
+---
+
+## Quick Start
+
+### Prerequisites
+
+- Terraform >= 1.5
+- `kubectl` configured for `intangles-qa-cluster` (ap-south-1, AWS profile `mum-test`)
+- Helm >= 3.12
+
+### Deploy (staging)
+
+```bash
+cd environments/staging
+
+terraform init \
+  -backend-config="bucket=intangles-tf-state" \
+  -backend-config="key=staging/telemetry.tfstate" \
+  -backend-config="region=ap-south-1"
+
+TF_VAR_elastic_password='<password>' \
+TF_VAR_kibana_encryption_key='<32-char-key>' \
+terraform apply -auto-approve
+```
+
+> Credentials must **never** be committed. Use `TF_VAR_*` environment variables only.
+
+### Verify pods
+
+```bash
+kubectl get pods -n telemetry
+
+# OTel Agent (1 per node)
+kubectl get pods -n telemetry -l app.kubernetes.io/name=otel-agent-collector
+
+# OTel Gateway (min 2)
+kubectl get pods -n telemetry -l app.kubernetes.io/name=otel-gateway-collector
+
+# Elasticsearch (3 master + 2 data + 2 coordinating)
+kubectl get pods -n telemetry -l chart=elasticsearch
+
+# Jaeger
+kubectl get pods -n telemetry -l app.kubernetes.io/name=jaeger
+
+# VictoriaMetrics
+kubectl get pods -n telemetry | grep -E "vminsert|vmselect|vmstorage"
+```
+
+---
+
+## Sending Telemetry from Applications
+
+### Same cluster (recommended)
+
+```bash
+# gRPC
+OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-agent-collector.telemetry.svc.cluster.local:4317
+OTEL_EXPORTER_OTLP_PROTOCOL=grpc
+
+# HTTP/protobuf
+OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-agent-collector.telemetry.svc.cluster.local:4318
+OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+```
+
+### From outside the cluster
+
+```bash
+OTEL_EXPORTER_OTLP_ENDPOINT=https://otel.test.intangles.com
+OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+```
+
+---
+
+## Auto-Instrumentation
+
+The OTel Operator manages an `Instrumentation` CRD. Enable namespace-wide auto-instrumentation:
+
+```bash
+# Node.js
+kubectl annotate namespace <app-namespace> \
+  instrumentation.opentelemetry.io/inject-nodejs="telemetry/nodejs-instrumentation"
+kubectl rollout restart deployment -n <app-namespace>
+```
+
+Trace flow: App → OTel Agent → OTel Gateway → Jaeger.
+
+---
+
+## Tail Sampling (Gateway)
+
+| Parameter | Variable | Default |
+|-----------|----------|---------|
+| Decision wait | `tail_sampling_decision_wait` | 30 s |
+| Normal trace keep % | `tail_sampling_normal_percentage` | configurable |
+| Slow trace threshold | `tail_sampling_slow_threshold_ms` | configurable ms |
+| Max buffered traces/pod | `tail_sampling_num_traces` | configurable |
+
+Error and slow traces are **always** kept. Tail sampling requires >= 2 Gateway pods — the headless StatefulSet ensures consistent hash-based routing so each trace's spans reach the same sampling decision.
+
+---
+
+## Metrics (VMAgent)
+
+VMAgent scrapes:
+- Kubernetes cluster metrics (kube-state-metrics, node-exporter, kubelet, API server)
+- MongoDB exporters — label `app.kubernetes.io/name=mongodb`, port `http-metrics`
+- PostgreSQL / TimescaleDB exporters — label `pg-exporter-service`, port `9187`
+- All ServiceMonitors in the `telemetry` namespace
+
+Metrics written to VictoriaMetrics via remote-write. Retention: **7 days**.
+VMAlert sends to Alertmanager: `kube-prometheus-stack-alertmanager.telemetry.svc.cluster.local:9093`.
+
+---
+
+## VictoriaMetrics Cluster (Staging)
+
+| Component | Replicas | Storage |
+|-----------|----------|---------|
+| vmstorage | 3 | 100 Gi EBS gp3 each |
+| vminsert | 3 (HPA 3–6) | — |
+| vmselect | 3 (HPA 3–6) | 20 Gi cache each |
+
+Replication factor: **2**. VMBackup -> S3 via IRSA. Bucket output as `vm_backup_s3_bucket`.
+
+---
+
+## Key Variables
+
+See [`variables.tf`](variables.tf):
+
+| Variable | Description |
+|----------|-------------|
+| `environment` | `dev` / `staging` / `production` |
+| `namespace` | Kubernetes namespace (default: `telemetry`) |
+| `otel_operator_enabled` | Deploy OTel Operator + collectors (default: `true`) |
+| `elasticsearch_enabled` | Deploy Elasticsearch |
+| `kibana_enabled` | Deploy Kibana |
+| `victoria_metrics_enabled` | Deploy VictoriaMetrics cluster |
+| `kube_prometheus_enabled` | Deploy kube-prometheus-stack / Grafana |
+| `infra_metrics_enabled` | Deploy infra-metrics OTel collector |
+| `instrumentation_enabled` | Deploy auto-instrumentation CRD |
+| `gateway_min_replicas` | Min Gateway pods (must be >= 2) |
+| `data_retention_days` | Elasticsearch index retention |
+
+---
+
+## Provider Versions
+
+| Provider | Version |
+|----------|---------|
+| hashicorp/kubernetes | `~> 2.25` |
+| hashicorp/helm | `~> 2.12` |
+| gavinbunney/kubectl | `~> 1.14` |
+| hashicorp/aws | `~> 5.0` |
+| hashicorp/tls | `>= 4.0` |
+
+> `gavinbunney/kubectl` is used for all CRD-backed resources instead of `kubernetes_manifest` to avoid plan-time CRD validation failures on fresh deploys.
+
+---
+
+## Troubleshooting
+
+### Kibana pre-install hook stuck
+
+```bash
+kubectl delete configmap -n telemetry kibana-kibana-helm-scripts
+kubectl delete secret   -n telemetry sh.helm.release.v1.kibana.v1
+kubectl delete secret   -n telemetry kibana-kibana-es-token
+terraform destroy -target='module.telemetry.module.kibana[0]'
+```
+
+### Jaeger "all shards failed" (ES 8.x fielddata)
+
+ES 8.x blocks `terms` aggregations on `text` fields without `fielddata:true`.
+Fixed permanently by:
+1. Priority-100 index templates (`jaeger-service-override`, `jaeger-span-override`) applied by the ILM job on every apply.
+2. `es.create-index-templates: "false"` in Jaeger Helm values prevents Jaeger from overriding them.
+
+### Trace forwarding issues
+
+```bash
+kubectl logs -n telemetry -l app.kubernetes.io/name=otel-agent-collector   --tail=50
+kubectl logs -n telemetry -l app.kubernetes.io/name=otel-gateway-collector --tail=50
+```
+
+---
+
+**Terraform** >= 1.5 | **Kubernetes** >= 1.24 | **Environment**: staging (`ap-south-1`, `intangles-qa-cluster`)
