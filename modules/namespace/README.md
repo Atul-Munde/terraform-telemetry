@@ -1,6 +1,7 @@
 # Namespace Module
 
-Creates and manages Kubernetes namespace for observability stack.
+Creates and manages the Kubernetes namespace for the telemetry stack.  
+All other modules depend on this module and use the namespace name it outputs.
 
 ## Usage
 
@@ -8,16 +9,13 @@ Creates and manages Kubernetes namespace for observability stack.
 module "namespace" {
   source = "./modules/namespace"
 
-  namespace        = "observability"
+  namespace        = "telemetry"
   create_namespace = true
-  
+
   labels = {
-    environment = "production"
+    environment = "staging"
     team        = "platform"
-  }
-  
-  annotations = {
-    "description" = "Observability stack namespace"
+    cost-center = "engineering"
   }
 }
 ```
@@ -26,19 +24,19 @@ module "namespace" {
 
 | Name | Description | Type | Default |
 |------|-------------|------|---------|
-| namespace | Namespace name | string | "observability" |
-| create_namespace | Whether to create the namespace | bool | true |
-| labels | Labels to apply | map(string) | {} |
-| annotations | Annotations to apply | map(string) | {} |
+| `namespace` | Namespace name | string | `"telemetry"` |
+| `create_namespace` | Whether to create the namespace (set `false` if it already exists) | bool | `true` |
+| `labels` | Labels to apply to the namespace | map(string) | `{}` |
+| `annotations` | Annotations to apply to the namespace | map(string) | `{}` |
 
 ## Outputs
 
 | Name | Description |
 |------|-------------|
-| name | Created namespace name |
+| `name` | The namespace name (same as input — used by all dependent modules) |
 
 ## Notes
 
-- Set `create_namespace = false` if namespace already exists
-- Labels are applied for resource organization
-- Annotations can include metadata like owner, description
+- Set `create_namespace = false` if the namespace was created outside Terraform (e.g. by another team or tool).
+- Labels propagate to all resources in the namespace for filtering and cost attribution.
+- This module must be applied before any other module in the stack (all others have `depends_on = [module.namespace]`).
