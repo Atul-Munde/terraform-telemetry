@@ -18,6 +18,10 @@ terraform {
       source  = "gavinbunney/kubectl"
       version = "~> 1.14"
     }
+    tls = {
+      source  = "hashicorp/tls"
+      version = "~> 4.0"
+    }
 
   }
 
@@ -153,25 +157,40 @@ module "telemetry" {
   jaeger_ingress_class      = "alb"
 
   # ---------------------------------------------------------------------------
-  # Elasticsearch Configuration
+  # Elasticsearch Configuration — HA with dedicated node roles
   # ---------------------------------------------------------------------------
   elasticsearch_enabled       = true
-  elasticsearch_replicas      = 2
-  elasticsearch_storage_size  = "75Gi"
+  elasticsearch_cluster_name  = "elasticsearch"
+  elasticsearch_anti_affinity = "hard"
   elasticsearch_storage_class = "gp3"
+  elasticsearch_node_roles = {
+    master = {
+      replicas     = 3
+      storage_size = "10Gi"
+      resources = {
+        requests = { cpu = "500m",  memory = "1Gi" }
+        limits   = { cpu = "1000m", memory = "2Gi" }
+      }
+    }
+    data = {
+      replicas     = 2
+      storage_size = "75Gi"
+      resources = {
+        requests = { cpu = "1000m", memory = "2Gi" }
+        limits   = { cpu = "2000m", memory = "4Gi" }
+      }
+    }
+    coordinating = {
+      replicas = 2
+      resources = {
+        requests = { cpu = "500m",  memory = "1Gi" }
+        limits   = { cpu = "1000m", memory = "2Gi" }
+      }
+    }
+  }
   custom_ilm_policies = {
     "jaeger-span"    = 3
     "jaeger-service" = 9
-  }
-  elasticsearch_resources = {
-    requests = {
-      cpu    = "1000m"
-      memory = "2Gi"
-    }
-    limits = {
-      cpu    = "2000m"
-      memory = "4Gi"
-    }
   }
 
   # ---------------------------------------------------------------------------
@@ -315,6 +334,11 @@ module "telemetry" {
     "release" = "kube-prometheus-stack"
   }
   redis_exporter_port           = 9121
+
+  # Elasticsearch Metrics Scraping
+  # Scrapes /_prometheus/metrics from all ES node groups in the telemetry namespace.
+  elasticsearch_scrape_enabled  = true
+  elasticsearch_service_labels  = { "app" = "elasticsearch-coordinating" }
 }
 
 # Outputs

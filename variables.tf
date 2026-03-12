@@ -340,16 +340,16 @@ variable "prometheus_resources" {
   }
 }
 
-variable "elasticsearch_replicas" {
-  description = "Number of Elasticsearch replicas"
-  type        = number
-  default     = 1
+variable "elasticsearch_cluster_name" {
+  description = "Elasticsearch cluster name — used as Helm release prefix and service DNS"
+  type        = string
+  default     = "elasticsearch"
 }
 
-variable "elasticsearch_storage_size" {
-  description = "Elasticsearch PVC size"
+variable "elasticsearch_anti_affinity" {
+  description = "Anti-affinity scheduling for master/data nodes: 'hard' or 'soft'"
   type        = string
-  default     = "50Gi"
+  default     = "hard"
 }
 
 variable "elasticsearch_storage_class" {
@@ -358,26 +358,56 @@ variable "elasticsearch_storage_class" {
   default     = "gp3"
 }
 
-variable "elasticsearch_resources" {
-  description = "Resource requests and limits for Elasticsearch"
+variable "elasticsearch_node_roles" {
+  description = "Per-role configuration for HA Elasticsearch: master, data, coordinating"
   type = object({
-    requests = object({
-      cpu    = string
-      memory = string
+    master = object({
+      replicas     = number
+      storage_size = string
+      resources = object({
+        requests = object({ cpu = string, memory = string })
+        limits   = object({ cpu = string, memory = string })
+      })
     })
-    limits = object({
-      cpu    = string
-      memory = string
+    data = object({
+      replicas     = number
+      storage_size = string
+      resources = object({
+        requests = object({ cpu = string, memory = string })
+        limits   = object({ cpu = string, memory = string })
+      })
+    })
+    coordinating = object({
+      replicas = number
+      resources = object({
+        requests = object({ cpu = string, memory = string })
+        limits   = object({ cpu = string, memory = string })
+      })
     })
   })
   default = {
-    requests = {
-      cpu    = "1000m"
-      memory = "2Gi"
+    master = {
+      replicas     = 3
+      storage_size = "10Gi"
+      resources = {
+        requests = { cpu = "500m",  memory = "1Gi" }
+        limits   = { cpu = "1000m", memory = "2Gi" }
+      }
     }
-    limits = {
-      cpu    = "2000m"
-      memory = "4Gi"
+    data = {
+      replicas     = 2
+      storage_size = "100Gi"
+      resources = {
+        requests = { cpu = "1000m", memory = "2Gi" }
+        limits   = { cpu = "2000m", memory = "4Gi" }
+      }
+    }
+    coordinating = {
+      replicas = 2
+      resources = {
+        requests = { cpu = "500m",  memory = "1Gi" }
+        limits   = { cpu = "1000m", memory = "2Gi" }
+      }
     }
   }
 }
@@ -915,4 +945,19 @@ variable "redis_exporter_port" {
   description = "Container port number on the redis-exporter that exposes /metrics (standard prometheus redis-exporter default: 9121)"
   type        = number
   default     = 9121
+}
+
+# ---------------------------------------------------------------------------
+# Elasticsearch Metrics Scraping
+# ---------------------------------------------------------------------------
+variable "elasticsearch_scrape_enabled" {
+  description = "Enable VMServiceScrape to scrape Elasticsearch /_prometheus/metrics via VMAgent"
+  type        = bool
+  default     = false
+}
+
+variable "elasticsearch_service_labels" {
+  description = "matchLabels selector to identify Elasticsearch Kubernetes Services for metrics scraping."
+  type        = map(string)
+  default     = { "app" = "elasticsearch-master" }
 }

@@ -193,9 +193,9 @@ variable "dash0_auth_token" {
 }
 
 variable "elasticsearch_endpoint" {
-  description = "Elasticsearch endpoint for logs export"
+  description = "Elasticsearch endpoint for logs export (should point to coordinating nodes)"
   type        = string
-  default     = "https://elasticsearch-master.telemetry.svc.cluster.local:9200"
+  default     = "https://elasticsearch-coordinating.telemetry.svc.cluster.local:9200"
 }
 
 variable "elastic_password" {

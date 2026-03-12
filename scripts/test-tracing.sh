@@ -1,9 +1,13 @@
 #!/bin/bash
-# End-to-end pipeline test:
-#   App → OTel Agent (DaemonSet) → OTel Gateway (tail-sampling)
-#         ├─ Traces  → Jaeger (OTLP gRPC) → Elasticsearch
-#         └─ Metrics → VictoriaMetrics vminsert (prometheusremotewrite)
-#                      → vmselect / VMUI / Grafana
+# End-to-end pipeline validation:
+#
+#   [1] Send OTLP trace → OTel Agent HTTP :4318
+#   [2] Agent forwards  → OTel Gateway (loadbalancing by traceId)
+#   [3] Gateway         → Jaeger Collector (OTLP gRPC :4317)  [after tail-sample decision]
+#   [4] Jaeger          → Elasticsearch  (jaeger-span-YYYY-MM-DD index)
+#   [5] Jaeger Query    → /api/traces/:traceId verified
+#
+# Usage: bash scripts/test-tracing.sh [namespace]
 
 set -euo pipefail
 
@@ -107,79 +111,123 @@ check "VMInsert health (8480)" "$VMINSERT_OK"
 GRAFANA_OK=$(curl -sf --max-time 3 http://localhost:3000/api/health >/dev/null 2>&1 && echo true || echo false)
 check "Grafana (3000)" "$GRAFANA_OK"
 
+# ─── Step 3b: Baseline pipeline counters (before trace) ──────────────────────
+echo -e "\n${BLUE}━━━ Step 3b: Baseline counters (before trace) ━━━━━━━━━━━━━━━━━━${NC}"
+
+AGENT_POD=$(kubectl get pods -n "$NAMESPACE" --no-headers \
+  | grep "otel-agent-collector" | head -1 | awk '{print $1}' || true)
+GW_POD=$(kubectl get pods -n "$NAMESPACE" --no-headers \
+  | grep "otel-gateway-collector-0" | awk '{print $1}' || true)
+
+_counter() {
+  local pod="$1" metric="$2"
+  kubectl exec -n "$NAMESPACE" "$pod" -- \
+    wget -qO- http://localhost:8888/metrics 2>/dev/null \
+    | grep "^${metric}" | awk '{print $NF}' | head -1 || echo "0"
+}
+
+AGENT_SPANS_BEFORE=0
+GW_SPANS_BEFORE=0
+GW_EXPORTED_BEFORE=0
+
+if [[ -n "$AGENT_POD" ]]; then
+  AGENT_SPANS_BEFORE=$(_counter "$AGENT_POD" "otelcol_receiver_accepted_spans_total")
+  echo "  Agent  receiver_accepted_spans : ${AGENT_SPANS_BEFORE}"
+fi
+if [[ -n "$GW_POD" ]]; then
+  GW_SPANS_BEFORE=$(_counter "$GW_POD" "otelcol_receiver_accepted_spans_total")
+  GW_EXPORTED_BEFORE=$(_counter "$GW_POD" "otelcol_exporter_sent_spans_total")
+  echo "  Gateway receiver_accepted_spans: ${GW_SPANS_BEFORE}"
+  echo "  Gateway exporter_sent_spans    : ${GW_EXPORTED_BEFORE}"
+fi
+
 # ─── Step 4: Send test trace ─────────────────────────────────────────────────
-echo -e "\n${BLUE}━━━ Step 4: Send test trace via OTel Agent ━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "\n${BLUE}━━━ Step 4: Send trace → OTel Agent HTTP :4318 ━━━━━━━━━━━━━━━━━━${NC}"
 
-NOW_NS=$(python3 -c "import time; print(int(time.time() * 1e9))")
-TRACE_ID=$(openssl rand -hex 16)
-SPAN_ID=$(openssl rand -hex 8)
-CHILD_SPAN_ID=$(openssl rand -hex 8)
-ERROR_SPAN_ID=$(openssl rand -hex 8)
+# Write Python sender to temp file — avoids all shell quoting issues
+cat > /tmp/send_trace.py << 'PYEOF'
+import json, time, subprocess, random, sys
 
-HTTP_STATUS=$(curl -s --max-time 10 -o /tmp/otel_trace_resp.json -w "%{http_code}" \
-  -X POST http://localhost:4318/v1/traces \
-  -H "Content-Type: application/json" \
-  -d "{
-    \"resourceSpans\": [{
-      \"resource\": {
-        \"attributes\": [
-          {\"key\": \"service.name\",           \"value\": {\"stringValue\": \"test-service\"}},
-          {\"key\": \"service.version\",        \"value\": {\"stringValue\": \"1.0.0\"}},
-          {\"key\": \"deployment.environment\", \"value\": {\"stringValue\": \"staging\"}}
-        ]
-      },
-      \"scopeSpans\": [{
-        \"scope\": {\"name\": \"test-tracer\", \"version\": \"1.0\"},
-        \"spans\": [
-          {
-            \"traceId\": \"${TRACE_ID}\",
-            \"spanId\": \"${SPAN_ID}\",
-            \"name\": \"GET /api/orders\",
-            \"kind\": 2,
-            \"startTimeUnixNano\": \"${NOW_NS}\",
-            \"endTimeUnixNano\": \"$(python3 -c "import time; print(int(time.time() * 1e9) + 500_000_000)")\",
-            \"attributes\": [
-              {\"key\": \"http.method\",      \"value\": {\"stringValue\": \"GET\"}},
-              {\"key\": \"http.url\",         \"value\": {\"stringValue\": \"http://api.staging/api/orders\"}},
-              {\"key\": \"http.status_code\", \"value\": {\"intValue\": 200}},
-              {\"key\": \"http.route\",       \"value\": {\"stringValue\": \"/api/orders\"}}
-            ],
-            \"status\": {\"code\": 1}
-          },
-          {
-            \"traceId\": \"${TRACE_ID}\",
-            \"spanId\": \"${CHILD_SPAN_ID}\",
-            \"parentSpanId\": \"${SPAN_ID}\",
-            \"name\": \"db.query SELECT orders\",
-            \"kind\": 3,
-            \"startTimeUnixNano\": \"$(python3 -c "import time; print(int(time.time() * 1e9) + 10_000_000)")\",
-            \"endTimeUnixNano\": \"$(python3 -c "import time; print(int(time.time() * 1e9) + 200_000_000)")\",
-            \"attributes\": [
-              {\"key\": \"db.system\",    \"value\": {\"stringValue\": \"postgresql\"}},
-              {\"key\": \"db.statement\", \"value\": {\"stringValue\": \"SELECT * FROM orders WHERE user_id=?\"}},
-              {\"key\": \"db.name\",      \"value\": {\"stringValue\": \"orders_db\"}}
-            ],
-            \"status\": {\"code\": 1}
-          },
-          {
-            \"traceId\": \"${TRACE_ID}\",
-            \"spanId\": \"${ERROR_SPAN_ID}\",
-            \"parentSpanId\": \"${SPAN_ID}\",
-            \"name\": \"POST /api/payment\",
-            \"kind\": 2,
-            \"startTimeUnixNano\": \"$(python3 -c "import time; print(int(time.time() * 1e9) + 220_000_000)")\",
-            \"endTimeUnixNano\": \"$(python3 -c "import time; print(int(time.time() * 1e9) + 490_000_000)")\",
-            \"attributes\": [
-              {\"key\": \"http.method\",      \"value\": {\"stringValue\": \"POST\"}},
-              {\"key\": \"http.status_code\", \"value\": {\"intValue\": 500}},
-              {\"key\": \"exception.message\",\"value\": {\"stringValue\": \"Payment gateway timeout\"}}
-            ],
-            \"status\": {\"code\": 2, \"message\": \"Payment gateway timeout\"}
-          }
-        ]
-      }]
+t   = int(time.time() * 1e9)
+tid = random.randbytes(16).hex()
+s0  = random.randbytes(8).hex()
+s1  = random.randbytes(8).hex()
+s2  = random.randbytes(8).hex()
+
+payload = {
+  "resourceSpans": [{
+    "resource": {"attributes": [
+      {"key": "service.name",           "value": {"stringValue": "test-service"}},
+      {"key": "service.version",        "value": {"stringValue": "1.0.0"}},
+      {"key": "deployment.environment", "value": {"stringValue": "staging"}}
+    ]},
+    "scopeSpans": [{
+      "scope": {"name": "test-tracer", "version": "1.0"},
+      "spans": [
+        {
+          "traceId": tid, "spanId": s0,
+          "name": "GET /api/orders", "kind": 2,
+          "startTimeUnixNano": str(t),
+          "endTimeUnixNano":   str(t + 500_000_000),
+          "attributes": [
+            {"key": "http.method",      "value": {"stringValue": "GET"}},
+            {"key": "http.url",         "value": {"stringValue": "http://api.staging/api/orders"}},
+            {"key": "http.status_code", "value": {"intValue": 200}},
+            {"key": "http.route",       "value": {"stringValue": "/api/orders"}}
+          ],
+          "status": {"code": 1}
+        },
+        {
+          "traceId": tid, "spanId": s1, "parentSpanId": s0,
+          "name": "db.query SELECT orders", "kind": 3,
+          "startTimeUnixNano": str(t + 10_000_000),
+          "endTimeUnixNano":   str(t + 200_000_000),
+          "attributes": [
+            {"key": "db.system",    "value": {"stringValue": "postgresql"}},
+            {"key": "db.statement", "value": {"stringValue": "SELECT * FROM orders WHERE user_id=?"}},
+            {"key": "db.name",      "value": {"stringValue": "orders_db"}}
+          ],
+          "status": {"code": 1}
+        },
+        {
+          "traceId": tid, "spanId": s2, "parentSpanId": s0,
+          "name": "POST /api/payment", "kind": 2,
+          "startTimeUnixNano": str(t + 220_000_000),
+          "endTimeUnixNano":   str(t + 490_000_000),
+          "attributes": [
+            {"key": "http.method",       "value": {"stringValue": "POST"}},
+            {"key": "http.status_code",  "value": {"intValue": 500}},
+            {"key": "exception.message", "value": {"stringValue": "Payment gateway timeout"}}
+          ],
+          "status": {"code": 2, "message": "Payment gateway timeout"}
+        }
+      ]
     }]
-  }" 2>/dev/null) || HTTP_STATUS="curl_failed"
+  }]
+}
+
+with open("/tmp/otel_trace_payload.json", "w") as f:
+    json.dump(payload, f)
+
+r = subprocess.run(
+    ["curl", "-s", "--max-time", "10",
+     "-o", "/tmp/otel_trace_resp.json", "-w", "%{http_code}",
+     "-X", "POST", "http://localhost:4318/v1/traces",
+     "-H", "Content-Type: application/json",
+     "-d", "@/tmp/otel_trace_payload.json"],
+    capture_output=True, text=True
+)
+status = r.stdout.strip() or "curl_failed"
+
+# Write shell-sourceable vars file
+with open("/tmp/otel_trace_vars.sh", "w") as f:
+    f.write(f'TRACE_ID="{tid}"\n')
+    f.write(f'HTTP_STATUS="{status}"\n')
+PYEOF
+
+python3 /tmp/send_trace.py
+# shellcheck source=/dev/null
+source /tmp/otel_trace_vars.sh
 
 if [[ "$HTTP_STATUS" == "200" ]]; then
   echo -e "${GREEN}  ✓ Trace accepted by Agent (HTTP 200)${NC}"
@@ -193,53 +241,57 @@ fi
 # ─── Step 5: Send test metrics ────────────────────────────────────────────────
 echo -e "\n${BLUE}━━━ Step 5: Send test metrics via OTel Agent ━━━━━━━━━━━━━━━━━━━━${NC}"
 
-METRIC_NOW_NS=$(python3 -c "import time; print(int(time.time() * 1e9))")
-METRICS_STATUS=$(curl -s --max-time 10 -o /tmp/otel_metrics_resp.json -w "%{http_code}" \
-  -X POST http://localhost:4318/v1/metrics \
-  -H "Content-Type: application/json" \
-  -d "{
-    \"resourceMetrics\": [{
-      \"resource\": {
-        \"attributes\": [
-          {\"key\": \"service.name\",           \"value\": {\"stringValue\": \"test-service\"}},
-          {\"key\": \"deployment.environment\", \"value\": {\"stringValue\": \"staging\"}}
-        ]
-      },
-      \"scopeMetrics\": [{
-        \"scope\": {\"name\": \"test-meter\", \"version\": \"1.0\"},
-        \"metrics\": [
-          {
-            \"name\": \"http_requests_total\",
-            \"description\": \"Total HTTP requests\",
-            \"sum\": {
-              \"dataPoints\": [{
-                \"attributes\": [
-                  {\"key\": \"method\", \"value\": {\"stringValue\": \"GET\"}},
-                  {\"key\": \"status\", \"value\": {\"stringValue\": \"200\"}}
-                ],
-                \"startTimeUnixNano\": \"${METRIC_NOW_NS}\",
-                \"timeUnixNano\": \"${METRIC_NOW_NS}\",
-                \"asDouble\": 42
-              }],
-              \"aggregationTemporality\": 2,
-              \"isMonotonic\": true
-            }
-          },
-          {
-            \"name\": \"http_request_duration_seconds\",
-            \"description\": \"HTTP request latency histogram\",
-            \"gauge\": {
-              \"dataPoints\": [{
-                \"attributes\": [{\"key\": \"method\", \"value\": {\"stringValue\": \"GET\"}}],
-                \"timeUnixNano\": \"${METRIC_NOW_NS}\",
-                \"asDouble\": 0.042
-              }]
-            }
+cat > /tmp/send_metrics.py << 'PYEOF'
+import json, time, subprocess
+
+t = int(time.time() * 1e9)
+payload = {
+  "resourceMetrics": [{
+    "resource": {"attributes": [
+      {"key": "service.name",           "value": {"stringValue": "test-service"}},
+      {"key": "deployment.environment", "value": {"stringValue": "staging"}}
+    ]},
+    "scopeMetrics": [{
+      "scope": {"name": "test-meter", "version": "1.0"},
+      "metrics": [
+        {
+          "name": "http_requests_total",
+          "description": "Total HTTP requests",
+          "sum": {
+            "dataPoints": [{"attributes": [
+              {"key": "method", "value": {"stringValue": "GET"}},
+              {"key": "status", "value": {"stringValue": "200"}}
+            ], "startTimeUnixNano": str(t), "timeUnixNano": str(t), "asDouble": 42}],
+            "aggregationTemporality": 2, "isMonotonic": True
           }
-        ]
-      }]
+        },
+        {
+          "name": "http_request_duration_seconds",
+          "description": "HTTP request latency histogram",
+          "gauge": {
+            "dataPoints": [{"attributes": [
+              {"key": "method", "value": {"stringValue": "GET"}}
+            ], "timeUnixNano": str(t), "asDouble": 0.042}]
+          }
+        }
+      ]
     }]
-  }" 2>/dev/null) || METRICS_STATUS="curl_failed"
+  }]
+}
+with open("/tmp/otel_metrics_payload.json", "w") as f:
+    json.dump(payload, f)
+r = subprocess.run(
+    ["curl", "-s", "--max-time", "10",
+     "-o", "/tmp/otel_metrics_resp.json", "-w", "%{http_code}",
+     "-X", "POST", "http://localhost:4318/v1/metrics",
+     "-H", "Content-Type: application/json",
+     "-d", "@/tmp/otel_metrics_payload.json"],
+    capture_output=True, text=True
+)
+print(r.stdout.strip() or "curl_failed")
+PYEOF
+
+METRICS_STATUS=$(python3 /tmp/send_metrics.py)
 
 if [[ "$METRICS_STATUS" == "200" ]]; then
   echo -e "${GREEN}  ✓ Metrics accepted by Agent (HTTP 200)${NC}"
@@ -251,31 +303,114 @@ else
   cat /tmp/otel_metrics_resp.json 2>/dev/null || true
 fi
 
-# ─── Step 6: Tail-sampling note ──────────────────────────────────────────────
-echo -e "\n${BLUE}━━━ Step 6: Tail-sampling (35s wait) ━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo "  Gateway waits 30s before deciding which traces to sample:"
-echo "  • Error spans   → always kept  (POST /api/payment span qualifies)"
-echo "  • Slow (>2s)    → always kept"
-echo "  • Normal traces → 50% sampled"
-echo "  Waiting 35s before querying Jaeger and VictoriaMetrics..."
-sleep 35
+# ─── Step 5b: Pipeline counter delta (Agent → Gateway) ───────────────────────
+echo -e "\n${BLUE}━━━ Step 5b: Hop 1 — Agent received? ━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+sleep 5  # let agent flush to gateway
 
-# ─── Step 7: Verify trace in Jaeger ──────────────────────────────────────────
-echo -e "\n${BLUE}━━━ Step 7: Verify trace in Jaeger ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-JAEGER_RESULT=$(curl -sf --max-time 5 \
-  "http://localhost:16686/api/traces/${TRACE_ID}" 2>/dev/null \
-  | python3 -c "
+if [[ -n "$AGENT_POD" ]]; then
+  AGENT_SPANS_AFTER=$(_counter "$AGENT_POD" "otelcol_receiver_accepted_spans_total")
+  DELTA=$(python3 -c "
+a='${AGENT_SPANS_AFTER}'; b='${AGENT_SPANS_BEFORE}'
+try:
+    print(int(float(a)) - int(float(b)))
+except:
+    print('?')
+")
+  if [[ "$DELTA" != "0" && "$DELTA" != "?" ]]; then
+    check "Agent accepted +${DELTA} spans (receiver_accepted_spans_total)" "true"
+  else
+    check "Agent counter unchanged (spans may have been dropped or not yet flushed)" "false"
+    echo "    Before: ${AGENT_SPANS_BEFORE}  After: ${AGENT_SPANS_AFTER}"
+    echo "    Check agent logs: kubectl logs -n ${NAMESPACE} ${AGENT_POD} --tail=20"
+  fi
+fi
+
+# ─── Step 6: Tail-sampling wait ──────────────────────────────────────────────
+echo -e "\n${BLUE}━━━ Step 6: Tail-sampling wait (Gateway decides in ~30s) ━━━━━━━━${NC}"
+echo "  Policy: ERROR spans are ALWAYS sampled (POST /api/payment has status=ERROR)"
+echo "  This trace WILL be kept. Waiting up to 45s for gateway decision..."
+echo ""
+WAITED=0
+GW_EXPORTED_OK=false
+while [[ $WAITED -lt 45 ]]; do
+  sleep 5; WAITED=$((WAITED + 5))
+  if [[ -n "$GW_POD" ]]; then
+    GW_EXPORTED_NOW=$(_counter "$GW_POD" "otelcol_exporter_sent_spans_total")
+    DELTA=$(python3 -c "
+a='${GW_EXPORTED_NOW}'; b='${GW_EXPORTED_BEFORE}'
+try:
+    print(int(float(a)) - int(float(b)))
+except:
+    print('0')
+")
+    if [[ "$DELTA" != "0" && "$DELTA" != "?" ]]; then
+      check "Hop 2 — Gateway exported +${DELTA} spans to Jaeger (${WAITED}s)" "true"
+      GW_EXPORTED_OK=true
+      break
+    else
+      echo -e "  ${YELLOW}⏳ ${WAITED}s — gateway exporter_sent_spans unchanged, still waiting...${NC}"
+    fi
+  else
+    sleep 5; WAITED=$((WAITED + 5))
+  fi
+done
+if [[ "$GW_EXPORTED_OK" != "true" ]]; then
+  check "Gateway did not export spans within 45s" "false"
+  echo "    Check gateway logs: kubectl logs -n ${NAMESPACE} ${GW_POD:-otel-gateway-collector-0} --tail=30"
+fi
+
+# ─── Step 7: Verify trace in Jaeger (with retry) ─────────────────────────────
+echo -e "\n${BLUE}━━━ Step 7: Hop 3+4 — Jaeger Query + Elasticsearch ━━━━━━━━━━━━━${NC}"
+echo "  Polling Jaeger /api/traces/${TRACE_ID} (up to 40s)..."
+
+JAEGER_RESULT=0
+for attempt in 1 2 3 4 5 6 7 8; do
+  sleep 5
+  JAEGER_RESULT=$(curl -sf --max-time 5 \
+    "http://localhost:16686/api/traces/${TRACE_ID}" 2>/dev/null \
+    | python3 -c "
 import sys, json
 d = json.load(sys.stdin)
 spans = sum(len(t.get('spans',[])) for t in d.get('data',[]))
 print(spans)
 " 2>/dev/null || echo "0")
+  if [[ "$JAEGER_RESULT" -ge 1 ]]; then
+    check "Hop 3 — Trace visible in Jaeger Query (${JAEGER_RESULT} spans, attempt ${attempt})" "true"
+    break
+  fi
+  echo -e "  ${YELLOW}  attempt ${attempt}: not yet in Jaeger...${NC}"
+done
 
-if [[ "$JAEGER_RESULT" -ge 1 ]]; then
-  check "Trace found in Jaeger (${JAEGER_RESULT} spans)" "true"
+if [[ "$JAEGER_RESULT" -lt 1 ]]; then
+  check "Trace NOT found in Jaeger after 40s" "false"
+  echo "    Manual retry: curl -s 'http://localhost:16686/api/traces/${TRACE_ID}' | python3 -m json.tool"
+fi
+
+# ─── Step 7b: Verify trace in Elasticsearch ──────────────────────────────────
+echo ""
+TODAY=$(date -u +%Y-%m-%d)
+ES_PASS=$(kubectl get secret -n "$NAMESPACE" elasticsearch-credentials \
+  -o jsonpath='{.data.ELASTIC_PASSWORD}' 2>/dev/null | base64 -d 2>/dev/null || echo "Intangles@2026")
+
+ES_RESULT=$(kubectl exec -n "$NAMESPACE" elasticsearch-master-0 -- \
+  curl -sk -u "elastic:${ES_PASS}" \
+  "https://localhost:9200/jaeger-span-${TODAY}/_search?q=traceID:${TRACE_ID}&size=3" \
+  2>/dev/null | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+hits = d.get('hits', {}).get('total', {})
+count = hits.get('value', 0) if isinstance(hits, dict) else hits
+print(count)
+" 2>/dev/null || echo "0")
+
+if [[ "$ES_RESULT" -ge 1 ]]; then
+  check "Hop 4 — Span stored in Elasticsearch jaeger-span-${TODAY} (${ES_RESULT} docs)" "true"
 else
-  check "Trace not yet in Jaeger" "false"
-  echo "    Retry: curl -s 'http://localhost:16686/api/traces/${TRACE_ID}' | python3 -m json.tool"
+  check "Hop 4 — Span NOT found in Elasticsearch jaeger-span-${TODAY}" "false"
+  echo "    Manual check:"
+  echo "    kubectl exec -n ${NAMESPACE} elasticsearch-master-0 -- \\"
+  echo "      curl -sk -u elastic:${ES_PASS} \\"
+  echo "      'https://localhost:9200/jaeger-span-${TODAY}/_search?q=traceID:${TRACE_ID}&pretty'"
 fi
 
 # ─── Step 8: Verify metrics in VictoriaMetrics ────────────────────────────────
@@ -334,15 +469,15 @@ else
   echo "  (no gateway pod found)"
 fi
 
-# ─── Step 10: Elasticsearch index check ──────────────────────────────────────
-echo -e "\n${BLUE}━━━ Step 10: Elasticsearch — Jaeger indices ━━━━━━━━━━━━━━━━━━━━━${NC}"
+# ─── Step 10: Elasticsearch indices overview ─────────────────────────────────
+echo -e "\n${BLUE}━━━ Step 10: Elasticsearch — Jaeger indices overview ━━━━━━━━━━━━${NC}"
 ES_PASS=$(kubectl get secret -n "$NAMESPACE" elasticsearch-credentials \
   -o jsonpath='{.data.ELASTIC_PASSWORD}' 2>/dev/null | base64 -d 2>/dev/null || echo "Intangles@2026")
 kubectl exec -n "$NAMESPACE" elasticsearch-master-0 -- \
   curl -s -k -u "elastic:${ES_PASS}" \
-  "https://localhost:9200/_cat/indices/jaeger-*?v&h=health,status,index,docs.count" \
-  2>/dev/null | head -20 \
-  || echo "  (elasticsearch not reachable or no jaeger indices yet)"
+  "https://localhost:9200/_cat/indices/jaeger-*?v&h=health,status,index,docs.count&s=index:desc" \
+  2>/dev/null | head -10 \
+  || echo "  (elasticsearch not reachable)"
 
 # ─── Step 11: OTel Agent pipeline counters ────────────────────────────────────
 echo -e "\n${BLUE}━━━ Step 11: OTel Agent pipeline counters ━━━━━━━━━━━━━━━━━━━━━━━${NC}"
@@ -360,9 +495,24 @@ GRAFANA_PASS=$(kubectl get secret -n "$NAMESPACE" kube-prometheus-stack-grafana 
   -o jsonpath='{.data.admin-password}' 2>/dev/null | base64 -d 2>/dev/null || echo "<not found>")
 
 echo ""
-echo -e "${BLUE}Pipeline:${NC}"
-echo "  Traces  : App --[OTLP]--> Agent --[loadbalancing/traceId]--> Gateway --[otlp/jaeger]--> Jaeger --> ES"
-echo "  Metrics : App --[OTLP]--> Agent --[otlp/gateway]-----------> Gateway --[prometheusremotewrite]--> vminsert --> vmstorage"
+echo -e "${BLUE}━━━ Pipeline validation summary ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
+echo -e "  [1] App  ──OTLP HTTP──▶  OTel Agent   (localhost:4318)            HTTP ${HTTP_STATUS}"
+if [[ -n "$AGENT_POD" ]]; then
+  AGENT_SPANS_FINAL=$(_counter "$AGENT_POD" "otelcol_receiver_accepted_spans_total")
+  echo "  [2] Agent──loadbalance──▶  OTel Gateway   (by traceId)               counter=${AGENT_SPANS_FINAL}"
+fi
+if [[ -n "$GW_POD" ]]; then
+  GW_EXPORTED_FINAL=$(_counter "$GW_POD" "otelcol_exporter_sent_spans_total")
+  echo "  [3] Gateway──OTLP gRPC──▶  Jaeger Collector                          counter=${GW_EXPORTED_FINAL}"
+fi
+echo "  [4] Jaeger──────────────▶  Elasticsearch  jaeger-span-$(date -u +%Y-%m-%d)  hits=${ES_RESULT:-0}"
+echo "  [5] Jaeger Query────────▶  /api/traces/:id                           spans=${JAEGER_RESULT:-0}"
+echo ""
+echo -e "${GREEN}Trace ID: ${TRACE_ID}${NC}"
+echo "  Jaeger UI:          http://localhost:16686/trace/${TRACE_ID}"
+echo "  Jaeger API:         http://localhost:16686/api/traces/${TRACE_ID}"
+echo "  Kibana Discover:    http://localhost:5601  →  jaeger-span-*  →  traceID: ${TRACE_ID}"
 echo ""
 echo -e "${GREEN}Endpoints (port-forwards active):${NC}"
 echo ""

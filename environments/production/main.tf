@@ -14,6 +14,10 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 5.0"
     }
+    tls = {
+      source  = "hashicorp/tls"
+      version = "~> 4.0"
+    }
   }
 
   backend "s3" {
@@ -133,24 +137,40 @@ module "telemetry" {
   jaeger_collector_replicas = 3
 
   # ---------------------------------------------------------------------------
-  # Elasticsearch Configuration — Production HA
+  # Elasticsearch Configuration — Production HA with dedicated node roles
   # ---------------------------------------------------------------------------
-  elasticsearch_enabled      = true
-  elasticsearch_replicas     = 3
-  elasticsearch_storage_size = "200Gi"
-  elasticsearch_resources = {
-    requests = {
-      cpu    = "2000m"
-      memory = "4Gi"
+  elasticsearch_enabled       = true
+  elasticsearch_cluster_name  = "elasticsearch"
+  elasticsearch_anti_affinity = "hard"
+  elasticsearch_storage_class = "gp3"
+  elasticsearch_node_roles = {
+    master = {
+      replicas     = 3
+      storage_size = "10Gi"
+      resources = {
+        requests = { cpu = "500m",  memory = "1Gi" }
+        limits   = { cpu = "1000m", memory = "2Gi" }
+      }
     }
-    limits = {
-      cpu    = "4000m"
-      memory = "8Gi"
+    data = {
+      replicas     = 3
+      storage_size = "200Gi"
+      resources = {
+        requests = { cpu = "2000m", memory = "4Gi" }
+        limits   = { cpu = "4000m", memory = "8Gi" }
+      }
+    }
+    coordinating = {
+      replicas = 2
+      resources = {
+        requests = { cpu = "1000m", memory = "2Gi" }
+        limits   = { cpu = "2000m", memory = "4Gi" }
+      }
     }
   }
 
-  # Data Retention — longer for production
-  data_retention_days = 14
+  # Data Retention
+  data_retention_days = 7
 
   # Labels
   labels = {
@@ -238,6 +258,11 @@ module "telemetry" {
     "release" = "kube-prometheus-stack"
   }
   redis_exporter_port           = 9121
+
+  # Elasticsearch Metrics Scraping
+  # Scrapes /_prometheus/metrics from all ES node groups in the telemetry namespace.
+  elasticsearch_scrape_enabled  = true
+  elasticsearch_service_labels  = { "app" = "elasticsearch-coordinating" }
 
   kube_prometheus_operator_watch_namespaces = var.kube_prometheus_operator_watch_namespaces
 }

@@ -53,8 +53,8 @@ output "jaeger_url" {
 # Elasticsearch
 # ---------------------------------------------------------------------------
 output "elasticsearch_endpoint" {
-  description = "Elasticsearch endpoint (if enabled)"
-  value       = var.elasticsearch_enabled ? "elasticsearch.${module.namespace.name}.svc.cluster.local:9200" : "N/A"
+  description = "Elasticsearch coordinating endpoint (if enabled)"
+  value       = var.elasticsearch_enabled ? module.elasticsearch[0].endpoint : "N/A"
 }
 
 # ---------------------------------------------------------------------------

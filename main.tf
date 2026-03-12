@@ -41,15 +41,15 @@ module "elasticsearch" {
 
   namespace           = module.namespace.name
   environment         = var.environment
-  replicas            = var.elasticsearch_replicas
-  storage_size        = var.elasticsearch_storage_size
+  cluster_name        = var.elasticsearch_cluster_name
+  node_roles          = var.elasticsearch_node_roles
+  anti_affinity       = var.elasticsearch_anti_affinity
   storage_class       = var.elasticsearch_storage_class
-  resources           = var.elasticsearch_resources
   retention_days      = var.data_retention_days
   node_selector       = var.node_selector
   tolerations         = var.tolerations
   elastic_password    = var.elastic_password
-  custom_ilm_policies    = var.custom_ilm_policies
+  custom_ilm_policies = var.custom_ilm_policies
 
   depends_on = [module.namespace]
 }
@@ -66,8 +66,8 @@ module "kibana" {
   resources             = var.kibana_resources
   elasticsearch_host    = var.elasticsearch_enabled ? (
     var.elastic_password != ""
-      ? "https://elasticsearch-master.${var.namespace}.svc:9200"
-      : "http://elasticsearch-master.${var.namespace}.svc:9200"
+      ? "https://${var.elasticsearch_cluster_name}-master.${var.namespace}.svc:9200"
+      : "http://${var.elasticsearch_cluster_name}-master.${var.namespace}.svc:9200"
   ) : ""
   elastic_password      = var.elastic_password
   kibana_encryption_key = var.kibana_encryption_key
@@ -96,7 +96,7 @@ module "jaeger" {
   storage_type       = var.jaeger_storage_type
   query_replicas     = var.jaeger_query_replicas
   collector_replicas = var.jaeger_collector_replicas
-  elasticsearch_host = var.elasticsearch_enabled ? "elasticsearch-master.${var.namespace}.svc.cluster.local" : ""
+  elasticsearch_host = var.elasticsearch_enabled ? "${var.elasticsearch_cluster_name}-coordinating.${var.namespace}.svc.cluster.local" : ""
   elastic_password   = var.elastic_password
   labels             = local.common_labels
   node_selector      = var.node_selector
@@ -147,7 +147,7 @@ module "otel_operator" {
   # Falls back to kube-prometheus remote-write endpoint when VM is disabled.
   prometheus_remote_write_endpoint = var.victoria_metrics_enabled ? "http://vminsert-${var.vm_cluster_name}.${var.namespace}.svc.cluster.local:8480/insert/0/prometheus/api/v1/write" : "http://kube-prometheus-stack-prometheus.${var.namespace}.svc.cluster.local:9090/api/v1/write"
   dash0_auth_token                 = var.dash0_auth_token
-  elasticsearch_endpoint           = "https://elasticsearch-master.${var.namespace}.svc.cluster.local:9200"
+  elasticsearch_endpoint           = "https://${var.elasticsearch_cluster_name}-coordinating.${var.namespace}.svc.cluster.local:9200"
   elastic_password                 = var.elastic_password
 
   # Infra metrics (opt-in)
@@ -301,6 +301,10 @@ module "victoria_metrics" {
   redis_exporter_namespace      = var.redis_exporter_namespace
   redis_exporter_service_labels = var.redis_exporter_service_labels
   redis_exporter_port           = var.redis_exporter_port
+
+  # Elasticsearch metrics scraping
+  elasticsearch_scrape_enabled  = var.elasticsearch_scrape_enabled
+  elasticsearch_service_labels  = var.elasticsearch_service_labels
 
   # Node placement (shared with other modules)
   node_selector = var.node_selector

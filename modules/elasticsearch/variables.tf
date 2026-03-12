@@ -8,46 +8,111 @@ variable "environment" {
   type        = string
 }
 
-variable "replicas" {
-  description = "Number of Elasticsearch replicas"
-  type        = number
-  default     = 3
-}
-
-variable "storage_size" {
-  description = "Storage size for each Elasticsearch node"
+# ---------------------------------------------------------------------------
+# Cluster identity
+# ---------------------------------------------------------------------------
+variable "cluster_name" {
+  description = "Elasticsearch cluster name — used as clusterName in Helm values and service DNS prefix"
   type        = string
-  default     = "100Gi"
+  default     = "elasticsearch"
 }
 
+# ---------------------------------------------------------------------------
+# Node roles — per-role replica count, resources, and storage
+# ---------------------------------------------------------------------------
+variable "node_roles" {
+  description = "Configuration for each Elasticsearch node role (master, data, coordinating)"
+  type = object({
+    master = object({
+      replicas     = number
+      storage_size = string
+      resources = object({
+        requests = object({
+          cpu    = string
+          memory = string
+        })
+        limits = object({
+          cpu    = string
+          memory = string
+        })
+      })
+    })
+    data = object({
+      replicas     = number
+      storage_size = string
+      resources = object({
+        requests = object({
+          cpu    = string
+          memory = string
+        })
+        limits = object({
+          cpu    = string
+          memory = string
+        })
+      })
+    })
+    coordinating = object({
+      replicas = number
+      resources = object({
+        requests = object({
+          cpu    = string
+          memory = string
+        })
+        limits = object({
+          cpu    = string
+          memory = string
+        })
+      })
+    })
+  })
+  default = {
+    master = {
+      replicas     = 3
+      storage_size = "10Gi"
+      resources = {
+        requests = { cpu = "500m",  memory = "1Gi" }
+        limits   = { cpu = "1000m", memory = "2Gi" }
+      }
+    }
+    data = {
+      replicas     = 2
+      storage_size = "100Gi"
+      resources = {
+        requests = { cpu = "1000m", memory = "2Gi" }
+        limits   = { cpu = "2000m", memory = "4Gi" }
+      }
+    }
+    coordinating = {
+      replicas = 2
+      resources = {
+        requests = { cpu = "500m",  memory = "1Gi" }
+        limits   = { cpu = "1000m", memory = "2Gi" }
+      }
+    }
+  }
+}
+
+# ---------------------------------------------------------------------------
+# Anti-affinity
+# ---------------------------------------------------------------------------
+variable "anti_affinity" {
+  description = "Anti-affinity type for master and data nodes: 'hard' (requiredDuring) or 'soft' (preferredDuring)"
+  type        = string
+  default     = "hard"
+
+  validation {
+    condition     = contains(["hard", "soft"], var.anti_affinity)
+    error_message = "anti_affinity must be 'hard' or 'soft'."
+  }
+}
+
+# ---------------------------------------------------------------------------
+# Storage
+# ---------------------------------------------------------------------------
 variable "storage_class" {
   description = "Storage class for persistent volumes"
   type        = string
   default     = ""
-}
-
-variable "resources" {
-  description = "Resource requests and limits"
-  type = object({
-    requests = object({
-      cpu    = string
-      memory = string
-    })
-    limits = object({
-      cpu    = string
-      memory = string
-    })
-  })
-  default = {
-    requests = {
-      cpu    = "1000m"
-      memory = "2Gi"
-    }
-    limits = {
-      cpu    = "2000m"
-      memory = "4Gi"
-    }
-  }
 }
 
 variable "labels" {

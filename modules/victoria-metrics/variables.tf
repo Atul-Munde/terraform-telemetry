@@ -464,3 +464,18 @@ variable "redis_exporter_port" {
   type        = number
   default     = 9121
 }
+
+# ---------------------------------------------------------------------------
+# Elasticsearch metrics scraping
+# ---------------------------------------------------------------------------
+variable "elasticsearch_scrape_enabled" {
+  description = "Enable VMServiceScrape to scrape Elasticsearch /_prometheus/metrics via VMAgent"
+  type        = bool
+  default     = false
+}
+
+variable "elasticsearch_service_labels" {
+  description = "matchLabels selector to identify Elasticsearch Kubernetes Services for metrics scraping."
+  type        = map(string)
+  default     = { "app" = "elasticsearch-coordinating" }
+}
