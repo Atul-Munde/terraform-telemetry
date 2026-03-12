@@ -24,6 +24,12 @@ storage:
     cmdlineParams:
       es.tls.enabled: "true"
       es.tls.skip-host-verify: "true"
+      # Disable Jaeger's built-in index template creation.
+      # Jaeger's own templates set text fields without fielddata:true, which breaks
+      # terms aggregations in ES 8.x. Our jaeger-service-override and
+      # jaeger-span-override templates (registered by the ES ILM job, priority 100)
+      # handle the correct mapping instead.
+      es.create-index-templates: "false"
 %{ endif }
 
 # Jaeger Agent (DaemonSet) - disabled, using OTel Collector instead

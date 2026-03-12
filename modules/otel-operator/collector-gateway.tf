@@ -10,25 +10,21 @@
 #           → transform/peer-service → tail_sampling → batch
 #           → [jaeger, prometheus_remote_write, prometheus_scrape]
 
-resource "kubernetes_manifest" "otel_gateway" {
-  # force_conflicts: reclaim field ownership from kubectl-patch commands run outside Terraform
-  field_manager {
-    force_conflicts = true
-  }
+resource "kubectl_manifest" "otel_gateway" {
+  # server_side_apply + force_conflicts: reclaim field ownership from kubectl-patch commands run outside Terraform
+  server_side_apply = true
+  force_conflicts   = true
 
-  # computed_fields: paths that are managed/injected by the server after creation.
-  # Without this, the kubernetes_manifest provider reads the full live object and
-  # detects a perpetual diff for fields it didn't set (tolerations injected by the
-  # OTel Operator reconciler). computed_fields tells the provider to treat these
-  # paths as server-owned and exclude them from plan diffs.
-  computed_fields = [
+  # ignore_fields: suppress perpetual toleration drift caused by the OTel Operator
+  # and Kubernetes injecting server-side fields after resource creation.
+  ignore_fields = [
     "metadata.labels",
     "metadata.annotations",
     "metadata.finalizers",
     "spec.tolerations",
   ]
 
-  manifest = {
+  yaml_body = yamlencode({
     apiVersion = "opentelemetry.io/v1beta1"
     kind       = "OpenTelemetryCollector"
 
@@ -342,7 +338,7 @@ resource "kubernetes_manifest" "otel_gateway" {
         effect   = t.effect
       }]
     } : {})
-  }
+  })
 
   depends_on = [
     helm_release.otel_operator,

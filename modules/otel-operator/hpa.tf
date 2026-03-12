@@ -19,7 +19,7 @@ resource "kubernetes_horizontal_pod_autoscaler_v2" "otel_gateway" {
     scale_target_ref {
       api_version = "opentelemetry.io/v1beta1"
       kind        = "OpenTelemetryCollector"
-      name        = kubernetes_manifest.otel_gateway.manifest.metadata.name
+      name        = "otel-gateway"
     }
 
     metric {
@@ -72,5 +72,5 @@ resource "kubernetes_horizontal_pod_autoscaler_v2" "otel_gateway" {
     }
   }
 
-  depends_on = [kubernetes_manifest.otel_gateway]
+  depends_on = [kubectl_manifest.otel_gateway]
 }

@@ -6,10 +6,10 @@
 #
 # The Operator injects an init-container that installs the OTel SDK before the app starts.
 
-resource "kubernetes_manifest" "nodejs_instrumentation" {
+resource "kubectl_manifest" "nodejs_instrumentation" {
   count = var.instrumentation_enabled ? 1 : 0
 
-  manifest = {
+  yaml_body = yamlencode({
     apiVersion = "opentelemetry.io/v1alpha1"
     kind       = "Instrumentation"
     metadata = {
@@ -78,7 +78,7 @@ resource "kubernetes_manifest" "nodejs_instrumentation" {
         ]
       }
     }
-  }
+  })
 
   depends_on = [helm_release.otel_operator]
 }

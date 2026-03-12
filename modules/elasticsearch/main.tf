@@ -173,6 +173,61 @@ resource "kubernetes_job_v1" "elasticsearch_ilm_setup" {
               }'
 
             ${local.custom_template_commands}
+
+            # Jaeger fielddata override templates (priority 100)
+            # Jaeger's collector explicitly writes its own field mappings when it
+            # initializes each new daily index, overriding ES index templates and
+            # dropping fielddata. We register override templates for both
+            # jaeger-service-* and jaeger-span-* AND patch today's live indices.
+            # Tomorrow onward is handled by the jaeger-fielddata-patch CronJob.
+            curl -sk -u "elastic:$PASSWORD" -X PUT \
+              "https://elasticsearch-master:9200/_index_template/jaeger-service-override" \
+              -H 'Content-Type: application/json' -d '{
+                "index_patterns": ["jaeger-service-*"],
+                "priority": 100,
+                "template": {
+                  "mappings": {
+                    "properties": {
+                      "serviceName":   { "type": "text", "fielddata": true, "fields": { "keyword": { "type": "keyword", "ignore_above": 256 } } },
+                      "operationName": { "type": "text", "fielddata": true, "fields": { "keyword": { "type": "keyword", "ignore_above": 256 } } }
+                    }
+                  }
+                }
+              }'
+
+            curl -sk -u "elastic:$PASSWORD" -X PUT \
+              "https://elasticsearch-master:9200/_index_template/jaeger-span-override" \
+              -H 'Content-Type: application/json' -d '{
+                "index_patterns": ["jaeger-span-*"],
+                "priority": 100,
+                "template": {
+                  "mappings": {
+                    "properties": {
+                      "serviceName":          { "type": "text", "fielddata": true, "fields": { "keyword": { "type": "keyword", "ignore_above": 256 } } },
+                      "operationName":        { "type": "text", "fielddata": true, "fields": { "keyword": { "type": "keyword", "ignore_above": 256 } } },
+                      "traceID":              { "type": "text", "fielddata": true, "fields": { "keyword": { "type": "keyword", "ignore_above": 256 } } },
+                      "spanID":               { "type": "text", "fielddata": true, "fields": { "keyword": { "type": "keyword", "ignore_above": 256 } } },
+                      "process.serviceName":  { "type": "text", "fielddata": true, "fields": { "keyword": { "type": "keyword", "ignore_above": 256 } } }
+                    }
+                  }
+                }
+              }'
+
+            TODAY=$(date +%Y-%m-%d)
+            for INDEX in jaeger-service-$TODAY jaeger-span-$TODAY; do
+              STATUS=$(curl -sk -o /dev/null -w "%%{http_code}" -u "elastic:$PASSWORD" "https://elasticsearch-master:9200/$INDEX")
+              if [ "$STATUS" = "200" ]; then
+                if echo "$INDEX" | grep -q "jaeger-service"; then
+                  FIELDS='{"properties":{"serviceName":{"type":"text","fielddata":true},"operationName":{"type":"text","fielddata":true}}}'
+                else
+                  FIELDS='{"properties":{"serviceName":{"type":"text","fielddata":true},"operationName":{"type":"text","fielddata":true},"traceID":{"type":"text","fielddata":true},"spanID":{"type":"text","fielddata":true},"process.serviceName":{"type":"text","fielddata":true}}}'
+                fi
+                curl -sk -u "elastic:$PASSWORD" -X PUT \
+                  "https://elasticsearch-master:9200/$INDEX/_mapping" \
+                  -H 'Content-Type: application/json' -d "$FIELDS"
+                echo "Patched $INDEX fielddata"
+              fi
+            done
           EOF
           ]
         }

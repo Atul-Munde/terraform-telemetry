@@ -9,22 +9,21 @@
 #   - Forward TRACES via loadbalancing exporter (routes by traceID hash → same Gateway pod)
 #   - Forward METRICS/LOGS via round-robin OTLP to Gateway
 
-resource "kubernetes_manifest" "otel_agent" {
-  # force_conflicts: reclaim field ownership from kubectl-patch commands run outside Terraform
-  field_manager {
-    force_conflicts = true
-  }
+resource "kubectl_manifest" "otel_agent" {
+  # server_side_apply + force_conflicts: reclaim field ownership from kubectl-patch commands run outside Terraform
+  server_side_apply = true
+  force_conflicts   = true
 
-  # computed_fields: suppress perpetual toleration drift caused by the OTel Operator
+  # ignore_fields: suppress perpetual toleration drift caused by the OTel Operator
   # and Kubernetes injecting server-side fields after resource creation.
-  computed_fields = [
+  ignore_fields = [
     "metadata.labels",
     "metadata.annotations",
     "metadata.finalizers",
     "spec.tolerations",
   ]
 
-  manifest = {
+  yaml_body = yamlencode({
     apiVersion = "opentelemetry.io/v1beta1"
     kind       = "OpenTelemetryCollector"
 
@@ -266,7 +265,7 @@ resource "kubernetes_manifest" "otel_agent" {
         }
       }
     }
-  }
+  })
 
   depends_on = [
     helm_release.otel_operator,

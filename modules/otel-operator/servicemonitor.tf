@@ -2,10 +2,10 @@
 # Only created when kube_prometheus_enabled = true
 # Label release: kube-prometheus-stack ensures the Prometheus Operator picks it up
 
-resource "kubernetes_manifest" "otel_gateway_service_monitor" {
+resource "kubectl_manifest" "otel_gateway_service_monitor" {
   count = var.kube_prometheus_enabled ? 1 : 0
 
-  manifest = {
+  yaml_body = yamlencode({
     apiVersion = "monitoring.coreos.com/v1"
     kind       = "ServiceMonitor"
     metadata = {
@@ -40,16 +40,16 @@ resource "kubernetes_manifest" "otel_gateway_service_monitor" {
         }
       ]
     }
-  }
+  })
 
-  depends_on = [kubernetes_manifest.otel_gateway]
+  depends_on = [kubectl_manifest.otel_gateway]
 }
 
 # ServiceMonitor for infra-metrics collector (when enabled)
-resource "kubernetes_manifest" "otel_infra_service_monitor" {
+resource "kubectl_manifest" "otel_infra_service_monitor" {
   count = var.kube_prometheus_enabled && var.infra_metrics_enabled ? 1 : 0
 
-  manifest = {
+  yaml_body = yamlencode({
     apiVersion = "monitoring.coreos.com/v1"
     kind       = "ServiceMonitor"
     metadata = {
@@ -79,7 +79,7 @@ resource "kubernetes_manifest" "otel_infra_service_monitor" {
         }
       ]
     }
-  }
+  })
 
   depends_on = [helm_release.otel_operator]
 }

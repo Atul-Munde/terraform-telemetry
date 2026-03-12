@@ -120,5 +120,5 @@ resource "kubernetes_ingress_v1" "otel_agent" {
     }
   }
 
-  depends_on = [kubernetes_manifest.otel_agent]
+  depends_on = [kubectl_manifest.otel_agent]
 }
