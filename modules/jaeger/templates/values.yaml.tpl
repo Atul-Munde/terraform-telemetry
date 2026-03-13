@@ -26,9 +26,10 @@ storage:
       es.tls.skip-host-verify: "true"
       # Disable Jaeger's built-in index template creation.
       # Jaeger's own templates set text fields without fielddata:true, which breaks
-      # terms aggregations in ES 8.x. Our jaeger-service-override and
-      # jaeger-span-override templates (registered by the ES ILM job, priority 100)
-      # handle the correct mapping instead.
+      # terms aggregations in ES 8.x ("all shards failed" on /api/traces).
+      # The telemetry-jaeger-span-ilm and telemetry-jaeger-service-ilm templates
+      # (priority 200, created by the ES ILM setup job) own all jaeger-* index
+      # mappings and include fielddata:true on all queried text fields.
       es.create-index-templates: "false"
 %{ endif }
 

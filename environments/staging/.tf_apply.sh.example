@@ -1,0 +1,17 @@
+#!/bin/bash
+# .tf_apply.sh.example — Copy to .tf_apply.sh and replace values
+# .tf_apply.sh is git-ignored — NEVER commit with real credentials
+
+set -euo pipefail
+
+# ─── Required secrets ───────────────────────────────────────────────────────
+# Set these via your password manager, AWS Secrets Manager, or Vault
+export TF_VAR_elastic_password='REPLACE_ME'
+export TF_VAR_kibana_encryption_key='REPLACE_ME_32_CHARS_MIN'
+export TF_VAR_dash0_auth_token='Bearer REPLACE_ME'
+
+# ─── AWS profile (local dev only; CI uses IAM role) ─────────────────────────
+export AWS_PROFILE='your-aws-profile'
+
+# ─── Run apply ──────────────────────────────────────────────────────────────
+terraform -chdir="$(dirname "$0")" apply -var-file=terraform.tfvars "$@"

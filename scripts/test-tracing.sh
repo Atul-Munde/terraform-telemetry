@@ -337,7 +337,7 @@ fi
 # ─── Step 10: Elasticsearch index check ──────────────────────────────────────
 echo -e "\n${BLUE}━━━ Step 10: Elasticsearch — Jaeger indices ━━━━━━━━━━━━━━━━━━━━━${NC}"
 ES_PASS=$(kubectl get secret -n "$NAMESPACE" elasticsearch-credentials \
-  -o jsonpath='{.data.ELASTIC_PASSWORD}' 2>/dev/null | base64 -d 2>/dev/null || echo "Intangles@2026")
+  -o jsonpath='{.data.ELASTIC_PASSWORD}' 2>/dev/null | base64 -d 2>/dev/null || echo "")
 kubectl exec -n "$NAMESPACE" elasticsearch-master-0 -- \
   curl -s -k -u "elastic:${ES_PASS}" \
   "https://localhost:9200/_cat/indices/jaeger-*?v&h=health,status,index,docs.count" \
@@ -384,7 +384,7 @@ echo "  Prometheus        http://localhost:9090"
 echo "  Alertmanager      http://localhost:9093"
 echo ""
 echo "  Kibana            http://localhost:5601"
-echo "    user: elastic   password: ${ES_PASS:-Intangles@2026}"
+echo "    user: elastic   password: ${ES_PASS:-<set ES_PASS env var>}"
 echo "    Discover -> jaeger-span-* -> filter: traceID: ${TRACE_ID}"
 echo ""
 echo -e "${YELLOW}Useful commands:${NC}"
@@ -396,7 +396,7 @@ echo "  curl -s 'http://localhost:8481/select/0/prometheus/api/v1/label/__name__
 echo ""
 echo "  # Find trace in Elasticsearch"
 echo "  kubectl exec -n ${NAMESPACE} elasticsearch-master-0 -- \\"
-echo "    curl -sk -u elastic:${ES_PASS:-Intangles@2026} \\"
+echo "    curl -sk -u elastic:${ES_PASS:-<set ES_PASS env var>} \\"
 echo "    'https://localhost:9200/jaeger-span-*/_search?pretty&size=3&q=traceID:${TRACE_ID}'"
 echo ""
 echo "  # Stream gateway logs (real-time)"

@@ -8,7 +8,7 @@ terraform {
     region         = "ap-south-1"
     dynamodb_table = "terraform-state-lock"
     encrypt        = true
-    profile        = "mum-test"
+    # profile is set via AWS_PROFILE env var or instance role — do not hardcode
   }
 }
 

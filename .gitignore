@@ -49,11 +49,16 @@ charts/
 
 # Terraform plan output files
 *.tfplan
+tfplan.out
 *-plan-output.txt
 *-plan-output.json
 terraform-plan-*
 plan.out
 plan.json
+
+# Local secret shell scripts (never commit — use .tf_apply.sh.example instead)
+.tf_apply.sh
+.tf_plan.sh
 
 # Ignore kubeconfig files
 kubeconfig

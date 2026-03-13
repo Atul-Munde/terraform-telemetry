@@ -376,5 +376,5 @@ variable "ingress_class_name" {
 variable "alb_group_name" {
   description = "ALB IngressGroup name — share the ALB across services"
   type        = string
-  default     = "intangles-ingress"
+  default     = ""
 }

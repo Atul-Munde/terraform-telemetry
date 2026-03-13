@@ -563,7 +563,7 @@ variable "alb_certificate_arn" {
 variable "alb_group_name" {
   description = "ALB IngressGroup name (alb.ingress.kubernetes.io/group.name). Set to your existing group to share the ALB instead of creating a new one."
   type        = string
-  default     = "intangles-ingress"
+  default     = ""
 }
 
 variable "kibana_ingress_class" {
