@@ -114,25 +114,24 @@ Each environment has its own `main.tf` (calls root module) and `terraform.tfvars
 ### Prerequisites
 
 - Terraform >= 1.5
-- `kubectl` configured for `intangles-qa-cluster` (ap-south-1, AWS profile `mum-test`)
+- `kubectl` configured for `intangles-qa-cluster` (ap-south-1) — see [docs/SETUP.md](docs/SETUP.md) for `AWS_PROFILE` setup
 - Helm >= 3.12
 
 ### Deploy (staging)
 
 ```bash
+export AWS_PROFILE=<your-profile-name>   # set your local AWS profile
 cd environments/staging
 
-terraform init \
-  -backend-config="bucket=intangles-tf-state" \
-  -backend-config="key=staging/telemetry.tfstate" \
-  -backend-config="region=ap-south-1"
+terraform init                           # backend config is already in main.tf
 
 TF_VAR_elastic_password='<password>' \
 TF_VAR_kibana_encryption_key='<32-char-key>' \
+TF_VAR_dash0_auth_token='Bearer <token>' \
 terraform apply -auto-approve
 ```
 
-> Credentials must **never** be committed. Use `TF_VAR_*` environment variables only.
+> Credentials must **never** be committed. Use `TF_VAR_*` environment variables or copy `environments/staging/.tf_apply.sh.example` → `.tf_apply.sh` (git-ignored).
 
 ### Verify pods
 

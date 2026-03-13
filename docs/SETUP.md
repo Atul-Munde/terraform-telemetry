@@ -17,25 +17,33 @@ Initial setup for working with this Terraform repository.
 
 ## AWS Configuration
 
+The backend and AWS provider authenticate via the `AWS_PROFILE` environment variable (or an IAM role in CI). The profile name is **not hardcoded** in any Terraform file — set it in your shell before running any Terraform or AWS CLI command.
+
 ```bash
-# Configure mum-test profile
-aws configure --profile mum-test
+# Create a named AWS profile for this project (one-time setup)
+aws configure --profile <your-profile-name>
 # AWS Access Key ID: <your key>
 # AWS Secret Access Key: <your secret>
 # Default region: ap-south-1
 # Default output format: json
 
+# Export it for the current shell session
+export AWS_PROFILE=<your-profile-name>
+
 # Verify EKS access
-aws eks describe-cluster --name intangles-qa-cluster --region ap-south-1 --profile mum-test
+aws eks describe-cluster --name intangles-qa-cluster --region ap-south-1
 ```
+
+> **Why env var, not hardcoded profile?** The `profile` field was removed from `backend.tf` and `environments/staging/main.tf` so engineers use their own local profile names without modifying tracked files. In CI, an IAM role is assumed directly — no profile needed.
 
 ## kubectl Access
 
 ```bash
+export AWS_PROFILE=<your-profile-name>
+
 aws eks update-kubeconfig \
   --region ap-south-1 \
-  --name intangles-qa-cluster \
-  --profile mum-test
+  --name intangles-qa-cluster
 
 kubectl get nodes
 ```
@@ -44,16 +52,25 @@ kubectl get nodes
 
 ## Terraform Backend
 
-The state is stored in S3. On first setup:
+State is stored in S3 with DynamoDB locking. The backend config is already set in `environments/<env>/main.tf` — no `-backend-config` flags needed.
 
 ```bash
-cd environments/staging
+export AWS_PROFILE=<your-profile-name>
 
-terraform init \
-  -backend-config="bucket=intangles-tf-state" \
-  -backend-config="key=staging/telemetry.tfstate" \
-  -backend-config="region=ap-south-1"
+cd environments/staging
+terraform init
 ```
+
+> On first clone (or after backend config changes) Terraform will prompt to reconfigure. Use `terraform init -reconfigure` if needed.
+
+Backend details:
+
+| Setting | Value |
+|---------|-------|
+| Bucket | `otel-terraform-state-setup` |
+| Region | `ap-south-1` |
+| DynamoDB table | `terraform-state-lock` |
+| Encryption | `true` |
 
 ---
 
@@ -65,14 +82,17 @@ Two sensitive values must be provided at apply time via environment variables:
 |----------|-------------|
 | `TF_VAR_elastic_password` | Elasticsearch `elastic` superuser password |
 | `TF_VAR_kibana_encryption_key` | Kibana saved-objects encryption key (exactly 32 chars) |
+| `TF_VAR_dash0_auth_token` | Dash0 bearer token for trace export (`Bearer <token>`) |
 
-Example:
 ```bash
-export TF_VAR_elastic_password='MySecurePassword2026'
-export TF_VAR_kibana_encryption_key='MySecureKibanaKey2026RandomXXXXX'
+export TF_VAR_elastic_password='<password>'
+export TF_VAR_kibana_encryption_key='<32-char-key>'
+export TF_VAR_dash0_auth_token='Bearer <token>'
 ```
 
-**Never commit these to `terraform.tfvars`.**
+See `environments/staging/.tf_apply.sh.example` for a ready-to-copy local script template.
+
+**Never commit these values. They must not appear in any tracked file.**
 
 ---
 
@@ -97,10 +117,22 @@ required_providers {
 ## First Deploy
 
 ```bash
+export AWS_PROFILE=<your-profile-name>
 cd environments/staging
 
+# Copy the example script and fill in real values
+cp .tf_apply.sh.example .tf_apply.sh
+# Edit .tf_apply.sh — it is git-ignored and never committed
+
+bash .tf_apply.sh
+```
+
+Or inline:
+
+```bash
 TF_VAR_elastic_password='<password>' \
 TF_VAR_kibana_encryption_key='<32-char-key>' \
+TF_VAR_dash0_auth_token='Bearer <token>' \
 terraform apply -auto-approve
 ```
 
