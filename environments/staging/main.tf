@@ -21,6 +21,12 @@ terraform {
 
   }
 
+    variable "aws_region" {
+      description = "AWS region used by providers and forwarded to the root module"
+      type        = string
+      default     = "ap-south-1"
+    }
+
   backend "s3" {
     bucket         = "otel-terraform-state-setup"
     key            = "k8s-otel-jaeger/staging/terraform.tfstate"
@@ -42,7 +48,7 @@ provider "helm" {
 }
 
 provider "aws" {
-  region  = "ap-south-1"
+  region  = var.aws_region
   # profile set via AWS_PROFILE env var; in CI uses IAM role
 }
 
@@ -84,6 +90,7 @@ variable "kube_prometheus_operator_watch_namespaces" {
 module "telemetry" {
   source = "../.."
 
+  aws_region       = var.aws_region
   environment      = "staging"
   namespace        = "telemetry"
   create_namespace = true

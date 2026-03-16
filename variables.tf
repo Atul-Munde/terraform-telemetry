@@ -19,6 +19,12 @@ variable "create_namespace" {
   default     = true
 }
 
+variable "aws_region" {
+  description = "AWS region used by the AWS provider"
+  type        = string
+  default     = "ap-south-1"
+}
+
 # ---------------------------------------------------------------------------
 # OTel Operator
 # ---------------------------------------------------------------------------

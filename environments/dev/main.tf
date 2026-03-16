@@ -25,6 +25,12 @@ terraform {
   }
 }
 
+variable "aws_region" {
+  description = "AWS region used by providers and forwarded to the root module"
+  type        = string
+  default     = "ap-south-1"
+}
+
 provider "kubernetes" {
   config_path = "~/.kube/config"
 }
@@ -36,13 +42,14 @@ provider "helm" {
 }
 
 provider "aws" {
-  region = "ap-south-1"
+  region = var.aws_region
 }
 
 # Import root module
 module "telemetry" {
   source = "../.."
 
+  aws_region       = var.aws_region
   environment      = "dev"
   namespace        = "telemetry"
   create_namespace = true
